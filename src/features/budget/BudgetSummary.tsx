@@ -3,10 +3,7 @@ import { CircleDollarSign, FlaskConical, ShieldCheck, ShieldAlert } from 'lucide
 import type { BudgetPool, Currency } from '../../types/budget'
 import { currencyLabels, formatAmount } from './BudgetStatus'
 
-interface BudgetSummaryProps {
-  pool: BudgetPool
-  onPolicyToggle: () => void
-}
+interface BudgetSummaryProps { pool: BudgetPool }
 
 const summaryMetrics: Array<{
   key: 'ledgerBalance' | 'reserved' | 'allocatedAvailable' | 'unallocated'
@@ -58,29 +55,13 @@ function CurrencySummary({ currency, pool }: { currency: Currency; pool: BudgetP
   )
 }
 
-export function BudgetSummary({ pool, onPolicyToggle }: BudgetSummaryProps) {
+export function BudgetSummary({ pool }: BudgetSummaryProps) {
   return (
     <section className="budget-overview" aria-labelledby="budget-overview-title">
       <div className="budget-overview-heading">
         <div>
           <h3 id="budget-overview-title">租户额度概览</h3>
           <span>更新于 2026-08-26 12:08:36</span>
-        </div>
-        <div className="policy-control">
-          <div>
-            <strong>个人预算控制</strong>
-            <span>{pool.policyEnabled ? '已开启' : '已关闭'}</span>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-label="个人预算控制"
-            aria-checked={pool.policyEnabled}
-            className={`switch-control ${pool.policyEnabled ? 'is-on' : ''}`}
-            onClick={onPolicyToggle}
-          >
-            <span aria-hidden="true" />
-          </button>
         </div>
       </div>
       <div className="budget-summary-grid">

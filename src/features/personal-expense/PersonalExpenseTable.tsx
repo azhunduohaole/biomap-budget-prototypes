@@ -8,7 +8,6 @@ const expenseTypeLabels: Record<ExpenseType, string> = {
   reservation: '预占',
   deduction: '已扣减',
   release: '释放',
-  refund: '退款',
 }
 
 interface PersonalExpenseTableProps {
@@ -23,7 +22,7 @@ export function PersonalExpenseTable({ records, onDetail, filtered }: PersonalEx
       <div className="personal-data-heading">
         <div>
           <h3 id="expense-records-title">个人扣减记录</h3>
-          <p>记录任务预占、实际扣减、释放与退款</p>
+          <p>记录任务预占、实际扣减与释放</p>
         </div>
         <span>{filtered ? `共 ${records.length} 条匹配结果` : '共 68 条记录'}</span>
       </div>

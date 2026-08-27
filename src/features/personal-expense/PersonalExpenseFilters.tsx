@@ -71,7 +71,6 @@ export function PersonalExpenseFilters({ values, activeCount, onChange, onSearch
             <option value="预占中">预占中</option>
             <option value="已扣减">已扣减</option>
             <option value="已释放">已释放</option>
-            <option value="已退款">已退款</option>
             <option value="失败">失败</option>
           </select>
           <ChevronDown size={14} aria-hidden="true" />
@@ -83,7 +82,6 @@ export function PersonalExpenseFilters({ values, activeCount, onChange, onSearch
             <option value="reservation">预占</option>
             <option value="deduction">已扣减</option>
             <option value="release">释放</option>
-            <option value="refund">退款</option>
           </select>
           <ChevronDown size={14} aria-hidden="true" />
         </label>

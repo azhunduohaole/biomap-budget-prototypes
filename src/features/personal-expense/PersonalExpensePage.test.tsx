@@ -25,13 +25,35 @@ describe('PersonalExpensePage', () => {
 
     const croOverview = screen.getByRole('region', { name: 'CRO币个人额度' })
     expect(within(croOverview).getByText('1,500')).toBeInTheDocument()
-    expect(within(croOverview).getByText('当前可执行额度')).toBeInTheDocument()
+    expect(within(croOverview).getByText('当前可执行额度（参考）')).toBeInTheDocument()
     expect(within(croOverview).getByText('0')).toBeInTheDocument()
     expect(within(croOverview).getByText('租户支付能力不足')).toBeInTheDocument()
     expect(screen.getByText(/个人预算不会扣除/)).toBeInTheDocument()
 
     expect(screen.queryByText('租户账面余额')).not.toBeInTheDocument()
     expect(screen.queryByText('租户未分配额度')).not.toBeInTheDocument()
+  })
+
+  it('hides personal budget cards when the tenant has not enabled the feature', () => {
+    render(<PersonalExpensePage entitlementAllowed={false} policyStatus="DISABLED" />)
+
+    expect(screen.queryByRole('heading', { name: '我的额度' })).not.toBeInTheDocument()
+    expect(screen.getByText('当前租户未启用个人预算，计费任务按租户原有规则执行。')).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: '个人扣减记录' })).toBeInTheDocument()
+  })
+
+  it('shows a transition notice without turning the member balance into zero', () => {
+    render(<PersonalExpensePage policyStatus="ENABLING" />)
+
+    expect(screen.getByText('个人预算策略切换中，付费任务暂不可用。')).toBeInTheDocument()
+    expect(screen.queryByText('个人可用额度')).not.toBeInTheDocument()
+  })
+
+  it('does not expose refund as a V1 record type', () => {
+    render(<PersonalExpensePage />)
+
+    expect(screen.queryByRole('option', { name: '退款' })).not.toBeInTheDocument()
+    expect(screen.queryByText('已退款')).not.toBeInTheDocument()
   })
 
   it('shows unavailable values instead of cached values or zero', () => {

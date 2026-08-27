@@ -1,4 +1,10 @@
-import type { BudgetPool, Currency, ExecutableBudget, MemberBudget } from '../types/budget'
+import type {
+  BudgetPool,
+  Currency,
+  DraftBudgetEntry,
+  ExecutableBudget,
+  MemberBudget,
+} from '../types/budget'
 
 interface AllocationInput {
   memberIds: string[]
@@ -15,6 +21,81 @@ interface RecoveryInput {
 interface BudgetMutationResult {
   members: MemberBudget[]
   pool: BudgetPool
+}
+
+export function upsertDraftBudget(
+  drafts: DraftBudgetEntry[],
+  nextDraft: DraftBudgetEntry,
+): DraftBudgetEntry[] {
+  const existing = drafts.find(
+    (item) => item.memberId === nextDraft.memberId && item.currency === nextDraft.currency,
+  )
+  if (!existing) return [...drafts, nextDraft]
+
+  return drafts.map((item) =>
+    item === existing
+      ? { ...nextDraft, amount: item.amount + nextDraft.amount }
+      : item,
+  )
+}
+
+export function activateDraftBudgets(
+  members: MemberBudget[],
+  pool: BudgetPool,
+  drafts: DraftBudgetEntry[],
+): BudgetMutationResult {
+  for (const currency of ['credits', 'cro'] as const) {
+    const total = drafts
+      .filter((item) => item.currency === currency)
+      .reduce((sum, item) => sum + item.amount, 0)
+    if (total > pool[currency].unallocated) {
+      throw new Error('首轮分配总额不能超过租户未分配额度')
+    }
+    if (total > 0 && pool[currency].status === 'INCONSISTENT') {
+      throw new Error('预算池异常，修复前不能确认启用')
+    }
+  }
+
+  return drafts.reduce<BudgetMutationResult>((current, draft) =>
+    allocateBudget(current.members, current.pool, {
+      memberIds: [draft.memberId],
+      currency: draft.currency,
+      amount: draft.amount,
+    }), { members, pool })
+}
+
+export function resetActiveCommitments(
+  members: MemberBudget[],
+  pool: BudgetPool,
+): BudgetMutationResult {
+  const nextMembers = members.map((item) => ({
+    ...item,
+    credits: { ...item.credits, available: 0, reserved: 0, alertBaseline: 0 },
+    cro: { ...item.cro, available: 0, reserved: 0, alertBaseline: 0 },
+  }))
+
+  return {
+    members: nextMembers,
+    pool: {
+      ...pool,
+      credits: {
+        ...pool.credits,
+        status: 'NORMAL',
+        allocatedAvailable: 0,
+        reserved: 0,
+        unallocated: Math.max(0, pool.credits.ledgerBalance),
+        spendable: Math.max(0, pool.credits.ledgerBalance),
+      },
+      cro: {
+        ...pool.cro,
+        status: 'NORMAL',
+        allocatedAvailable: 0,
+        reserved: 0,
+        unallocated: Math.max(0, pool.cro.ledgerBalance),
+        spendable: Math.max(0, pool.cro.ledgerBalance),
+      },
+    },
+  }
 }
 
 export function deriveExecutableBudget(

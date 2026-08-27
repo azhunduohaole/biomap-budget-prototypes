@@ -1,4 +1,7 @@
 import type { Currency } from './budget'
+import type { BudgetPolicyStatus } from './budget'
+
+export type { BudgetPolicyStatus }
 
 export type PersonalBudgetStatus = '正常' | '即将耗尽' | '已全部预占' | '已耗尽' | '未分配'
 
@@ -12,16 +15,16 @@ export interface PersonalBudgetOverview {
   currency: Currency
   serviceAvailable: boolean
   personalAvailable: number | null
-  taskExecutable: number | null
+  accountExecutable: number | null
   reserved: number | null
   consumed: number | null
   status: PersonalBudgetStatus | null
   blockingReason: PersonalBudgetBlockReason
 }
 
-export type ExpenseType = 'reservation' | 'deduction' | 'release' | 'refund'
+export type ExpenseType = 'reservation' | 'deduction' | 'release'
 
-export type ExpenseRecordStatus = '预占中' | '已扣减' | '已释放' | '已退款' | '失败'
+export type ExpenseRecordStatus = '预占中' | '已扣减' | '已释放' | '失败'
 
 export interface PersonalExpenseRecord {
   id: string

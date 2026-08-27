@@ -174,6 +174,40 @@
   margin-top: var(--space-3);
 }
 
+.personal-policy-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-info);
+  background: var(--color-info-bg);
+}
+
+.personal-policy-notice.is-warning {
+  border-color: var(--color-warning-border);
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+
+.personal-policy-notice > svg {
+  flex: 0 0 auto;
+  margin-top: var(--space-1);
+}
+
+.personal-policy-notice strong {
+  color: var(--color-text-primary);
+}
+
+.personal-policy-notice p {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
 .personal-section-heading,
 .expense-filter-heading,
 .personal-data-heading,
@@ -269,9 +303,7 @@
 
 .personal-budget-status.is-success,
 .expense-status.is-已释放,
-.expense-status.is-已退款,
-.expense-type.is-release,
-.expense-type.is-refund {
+.expense-type.is-release {
   color: var(--color-success);
   background: var(--color-success-bg);
 }
@@ -322,11 +354,11 @@
 }
 
 .personal-budget-metrics dt {
-  overflow: hidden;
+  min-height: calc(var(--font-size-sm) * 2.8);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  white-space: normal;
 }
 
 .personal-budget-metrics dd {
@@ -627,8 +659,7 @@
   color: var(--color-error);
 }
 
-.expense-amount.is-release,
-.expense-amount.is-refund {
+.expense-amount.is-release {
   color: var(--color-success);
 }
 
@@ -778,14 +809,6 @@
   .personal-budget-metrics > div {
     padding-right: var(--space-2);
     padding-left: var(--space-2);
-  }
-
-  .personal-budget-metrics dt {
-    min-height: calc(var(--font-size-sm) * 2.8);
-    overflow: visible;
-    line-height: 1.4;
-    text-overflow: clip;
-    white-space: normal;
   }
 
   .os-mobile-menu {

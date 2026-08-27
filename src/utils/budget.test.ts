@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import type { BudgetPool, CurrencyBudget, MemberBudget, PoolStatus } from '../types/budget'
+import type { BudgetPool, CurrencyBudget, DraftBudgetEntry, MemberBudget, PoolStatus } from '../types/budget'
 import { initialMembers, initialPool } from '../data/mockData'
-import { allocateBudget, deriveExecutableBudget, recoverBudget } from './budget'
+import {
+  activateDraftBudgets,
+  allocateBudget,
+  deriveExecutableBudget,
+  recoverBudget,
+  resetActiveCommitments,
+  upsertDraftBudget,
+} from './budget'
 
 const currencyBudget = (available: number): CurrencyBudget => ({
   allocated: available,
@@ -27,8 +34,9 @@ const pool = (
   spendable: number,
   eligibleSpendable: number,
   status: PoolStatus = 'NORMAL',
-): BudgetPool => ({
-  policyEnabled: true,
+  ): BudgetPool => ({
+    entitlementAllowed: true,
+    policyStatus: 'ENABLED',
   credits: {
     status,
     ledgerBalance: spendable,
@@ -88,6 +96,38 @@ describe('deriveExecutableBudget', () => {
 })
 
 describe('budget mutations', () => {
+  it('keeps configuration drafts outside the formal tenant and member ledgers', () => {
+    const sourcePool = pool(1_000, 1_000)
+    sourcePool.credits.unallocated = 1_000
+    const sourceMember = member(0)
+
+    const drafts = upsertDraftBudget([], {
+      memberId: sourceMember.id,
+      currency: 'credits',
+      amount: 300,
+      note: '首轮预算草稿',
+    })
+
+    expect(drafts).toHaveLength(1)
+    expect(sourceMember.credits.available).toBe(0)
+    expect(sourcePool.credits.unallocated).toBe(1_000)
+
+    const activated = activateDraftBudgets([sourceMember], sourcePool, drafts)
+    expect(activated.members[0].credits.available).toBe(300)
+    expect(activated.pool.credits.unallocated).toBe(700)
+  })
+
+  it('clears active commitments when the personal budget policy is disabled', () => {
+    const sourcePool = pool(1_000, 1_000)
+    sourcePool.credits.allocatedAvailable = 100
+    sourcePool.credits.unallocated = 900
+    const result = resetActiveCommitments([member(100)], sourcePool)
+
+    expect(result.members[0].credits.available).toBe(0)
+    expect(result.pool.credits.allocatedAvailable).toBe(0)
+    expect(result.pool.credits.unallocated).toBe(1_000)
+  })
+
   it('allocates the same amount to every selected member atomically', () => {
     const secondMember = { ...member(100), id: 'member-2', email: 'second@biomap.com' }
     const sourcePool = pool(1_000, 1_000)
@@ -135,6 +175,20 @@ describe('budget mutations', () => {
     expect(result.members[0].credits.available).toBe(60)
     expect(result.pool.credits.unallocated).toBe(440)
     expect(result.pool.credits.allocatedAvailable).toBe(60)
+  })
+})
+
+describe('draft validation', () => {
+  it('rejects a draft total that exceeds the tenant allocation capacity', () => {
+    const sourcePool = pool(1_000, 1_000)
+    sourcePool.credits.unallocated = 500
+    const drafts: DraftBudgetEntry[] = [
+      { memberId: 'member-1', currency: 'credits', amount: 300, note: 'A' },
+      { memberId: 'member-2', currency: 'credits', amount: 300, note: 'B' },
+    ]
+
+    expect(() => activateDraftBudgets([member(0), { ...member(0), id: 'member-2' }], sourcePool, drafts))
+      .toThrow('首轮分配总额不能超过租户未分配额度')
   })
 })
 

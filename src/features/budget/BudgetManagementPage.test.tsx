@@ -5,6 +5,73 @@ import { describe, expect, it } from 'vitest'
 import { BudgetManagementPage } from './BudgetManagementPage'
 
 describe('BudgetManagementPage', () => {
+  it('shows only the tenant overview and unified ledger when OPT authorization is absent', () => {
+    render(<BudgetManagementPage initialEntitlementAllowed={false} initialPolicyStatus="DISABLED" />)
+
+    expect(screen.getByRole('heading', { name: '租户额度概览' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '统一额度流水' })).toBeInTheDocument()
+    expect(screen.queryByText('成员预算明细')).not.toBeInTheDocument()
+    expect(screen.queryByText('个人预算控制')).not.toBeInTheDocument()
+    expect(screen.getByText('历史租户级计费')).toBeInTheDocument()
+  })
+
+  it('keeps first-round allocations as drafts until enablement is confirmed', async () => {
+    const user = userEvent.setup()
+    render(<BudgetManagementPage initialPolicyStatus="DISABLED" />)
+
+    await user.click(screen.getByRole('button', { name: '开始配置' }))
+    await user.click(screen.getByRole('button', { name: '给张雯配置额度' }))
+    await user.type(screen.getByLabelText('分配金额'), '200')
+    await user.type(screen.getByLabelText('操作备注'), '首轮预算草稿')
+    await user.click(screen.getByRole('button', { name: '保存草稿' }))
+
+    expect(within(screen.getByRole('row', { name: /张雯/ })).getByText('草稿 200')).toBeInTheDocument()
+    expect(screen.getByText('预计分配 Credits 200 · CRO币 0')).toBeInTheDocument()
+    expect(screen.queryByText('首轮预算草稿')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Credits 额度概览' })).getByLabelText('租户账面余额 120,000')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '确认启用' }))
+    expect(await screen.findByText('个人预算已启用', { selector: '#policy-status-title' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '额度流水' }))
+    expect(screen.getByText('首轮预算草稿')).toBeInTheDocument()
+  })
+
+  it('exposes task billing fields needed to replace the legacy deduction page', async () => {
+    const user = userEvent.setup()
+    render(<BudgetManagementPage />)
+
+    await user.click(screen.getByRole('tab', { name: '额度流水' }))
+    expect(screen.getByText('本月 Credits 扣减')).toBeInTheDocument()
+    expect(screen.getByText('租户可用余额')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '记录分类' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '计费范围' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '流水产品线' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '流水状态' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '流水操作类型' })).toBeInTheDocument()
+    expect(screen.getByLabelText('流水开始时间')).toBeInTheDocument()
+    expect(screen.getByLabelText('流水结束时间')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '导出流水' })).toBeInTheDocument()
+    expect(screen.getByLabelText('当前预占 Credits 1,200 CRO币 0')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: '计费范围' }), 'TENANT_ONLY')
+    expect(screen.getByLabelText('本月 Credits 扣减 2,400')).toBeInTheDocument()
+    expect(screen.queryByText('抗体亲和力预测')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '查看历史租户级计费详情' }))
+    const drawer = screen.getByRole('dialog', { name: '流水详情' })
+    expect(within(drawer).getByText('租户级计费')).toBeInTheDocument()
+    expect(within(drawer).getByText('普通额度')).toBeInTheDocument()
+    expect(within(drawer).getByText('实际用量')).toBeInTheDocument()
+  })
+
+  it('prioritizes a disabled account over budget insufficiency', () => {
+    render(<BudgetManagementPage />)
+
+    const disabledMember = screen.getByRole('row', { name: /文彪/ })
+    expect(within(disabledMember).getAllByText('账号已禁用')).toHaveLength(2)
+    expect(within(disabledMember).queryByText('个人额度不足')).not.toBeInTheDocument()
+  })
+
   it('keeps personal budget visible while explaining zero executable CRO capacity', () => {
     render(<BudgetManagementPage />)
 
@@ -87,10 +154,11 @@ describe('BudgetManagementPage', () => {
     const user = userEvent.setup()
     render(<BudgetManagementPage />)
 
-    await user.click(screen.getByRole('switch', { name: '个人预算控制' }))
+    await user.click(screen.getByRole('button', { name: '关闭个人预算' }))
 
     expect(screen.getByRole('dialog', { name: '关闭个人预算控制' })).toBeInTheDocument()
     expect(screen.getByText(/当前存在运行中预占/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '确认关闭' })).toBeDisabled()
+    expect(screen.getByText('Credits：5,500')).toBeInTheDocument()
   })
 })

@@ -8,9 +8,10 @@ const operationLabels: Record<BudgetLedgerEntry['operation'], string> = {
   ALLOCATION: '分配',
   RECOVERY: '回收',
   RESERVATION: '预占',
+  ADDITIONAL_RESERVATION: '追加预占',
   SETTLEMENT: '结算',
   RELEASE: '释放',
-  REFUND: '退款',
+  SYSTEM_RECOVERY: '系统回收',
 }
 
 interface LedgerTableProps {
@@ -40,12 +41,12 @@ export function LedgerTable({ entries, members, compact = false }: LedgerTablePr
           {entries.map((entry) => (
             <tr key={entry.id}>
               <td data-label="时间 / 流水"><span>{entry.timestamp}</span><small>{entry.id}</small></td>
-              <td data-label="成员">{memberById.get(entry.memberId)?.name ?? '已移除成员'}</td>
+              <td data-label="成员">{entry.memberId ? memberById.get(entry.memberId)?.name ?? entry.memberName : entry.memberName}</td>
               <td data-label="币种 / 类型"><strong>{currencyLabels[entry.currency]}</strong><span>{operationLabels[entry.operation]}</span></td>
               <td data-label="变动金额" className={entry.amount >= 0 ? 'amount-positive' : 'amount-negative'}>
                 {entry.amount >= 0 ? '+' : ''}{formatAmount(entry.amount)}
               </td>
-              <td data-label="变动后余额"><span>可用 {formatAmount(entry.availableAfter)}</span><small>预占 {formatAmount(entry.reservedAfter)}</small></td>
+              <td data-label="变动后余额"><span>可用 {entry.availableAfter === undefined ? '--' : formatAmount(entry.availableAfter)}</span><small>预占 {entry.reservedAfter === undefined ? '--' : formatAmount(entry.reservedAfter)}</small></td>
               <td data-label="操作人 / 任务"><span>{entry.actor}</span><small>{entry.taskId ?? '无关联任务'}</small></td>
               <td data-label="备注">{entry.note}</td>
             </tr>

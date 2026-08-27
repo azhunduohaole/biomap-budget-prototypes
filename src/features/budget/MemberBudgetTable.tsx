@@ -1,7 +1,7 @@
 import { List, RotateCcw, WalletCards } from 'lucide-react'
 
 import { Button } from '../../components/ui/Button'
-import type { BudgetPool, Currency, MemberBudget } from '../../types/budget'
+import type { BudgetPolicyStatus, BudgetPool, Currency, DraftBudgetEntry, MemberBudget } from '../../types/budget'
 import { deriveExecutableBudget } from '../../utils/budget'
 import { BlockReason, BudgetStatus, currencyLabels, formatAmount } from './BudgetStatus'
 
@@ -14,11 +14,14 @@ interface MemberBudgetTableProps {
   onRecover: (memberId: string) => void
   onLedger: (memberId: string) => void
   onBatchAllocate: () => void
+  policyStatus: BudgetPolicyStatus
+  drafts: DraftBudgetEntry[]
 }
 
-function CurrencyCell({ member, pool, currency }: { member: MemberBudget; pool: BudgetPool; currency: Currency }) {
+function CurrencyCell({ member, pool, currency, draftAmount, policyStatus }: { member: MemberBudget; pool: BudgetPool; currency: Currency; draftAmount: number; policyStatus: BudgetPolicyStatus }) {
   const budget = member[currency]
   const executable = deriveExecutableBudget(member, pool, currency)
+  const policyActive = policyStatus === 'ENABLED' || policyStatus === 'DISABLING'
 
   return (
     <div className="currency-budget-cell">
@@ -26,10 +29,15 @@ function CurrencyCell({ member, pool, currency }: { member: MemberBudget; pool: 
         <strong>{currencyLabels[currency]}</strong>
         <BudgetStatus budget={budget} />
       </div>
+      {draftAmount > 0 && <span className="draft-budget-amount">草稿 {formatAmount(draftAmount)}</span>}
       <span>个人可用 {formatAmount(budget.available)}</span>
-      <span className="executable-amount">当前可执行 {formatAmount(executable.accountExecutable)}</span>
+      <span className="executable-amount">当前可执行 {policyActive ? formatAmount(executable.accountExecutable) : '--'}</span>
       <span>预占 {formatAmount(budget.reserved)} · 累计消费 {formatAmount(budget.consumed)}</span>
-      <BlockReason reason={executable.reason} />
+      {member.status === 'disabled'
+        ? <span className="block-reason block-reason-active">账号已禁用</span>
+        : policyActive
+          ? <BlockReason reason={executable.reason} />
+          : <span className="block-reason block-reason-neutral">正式额度未生效</span>}
       <details className="budget-breakdown">
         <summary>查看组成</summary>
         <dl>
@@ -51,10 +59,13 @@ export function MemberBudgetTable({
   onRecover,
   onLedger,
   onBatchAllocate,
+  policyStatus,
+  drafts,
 }: MemberBudgetTableProps) {
   const selectableIds = members.filter((member) => member.status === 'active').map((member) => member.id)
   const selectedVisibleCount = selectableIds.filter((id) => selectedIds.includes(id)).length
   const allSelected = selectableIds.length > 0 && selectedVisibleCount === selectableIds.length
+  const canAllocate = policyStatus === 'CONFIGURING' || policyStatus === 'ENABLED'
 
   const toggleAll = () => {
     if (allSelected) {
@@ -82,10 +93,10 @@ export function MemberBudgetTable({
         <Button
           variant="primary"
           icon={<WalletCards size={16} aria-hidden="true" />}
-          disabled={selectedIds.length === 0}
+          disabled={selectedIds.length === 0 || !canAllocate}
           onClick={onBatchAllocate}
         >
-          批量分配额度
+          批量{policyStatus === 'CONFIGURING' ? '配置' : '分配'}额度
         </Button>
       </div>
 
@@ -131,8 +142,8 @@ export function MemberBudgetTable({
                   </div>
                 </td>
                 <td data-label="角色"><span className="role-tag">{member.role}</span></td>
-                <td data-label="Credits"><CurrencyCell member={member} pool={pool} currency="credits" /></td>
-                <td data-label="CRO币"><CurrencyCell member={member} pool={pool} currency="cro" /></td>
+                <td data-label="Credits"><CurrencyCell member={member} pool={pool} currency="credits" policyStatus={policyStatus} draftAmount={drafts.find((item) => item.memberId === member.id && item.currency === 'credits')?.amount ?? 0} /></td>
+                <td data-label="CRO币"><CurrencyCell member={member} pool={pool} currency="cro" policyStatus={policyStatus} draftAmount={drafts.find((item) => item.memberId === member.id && item.currency === 'cro')?.amount ?? 0} /></td>
                 <td data-label="使用情况">
                   <div className="usage-cell">
                     <span>最近消费</span>
@@ -144,15 +155,15 @@ export function MemberBudgetTable({
                     <Button
                       variant="link"
                       icon={<WalletCards size={14} aria-hidden="true" />}
-                      aria-label={`给${member.name}分配额度`}
-                      disabled={member.status !== 'active' || !pool.policyEnabled}
+                      aria-label={`给${member.name}${policyStatus === 'CONFIGURING' ? '配置' : '分配'}额度`}
+                      disabled={member.status !== 'active' || !canAllocate || (pool.credits.status === 'INCONSISTENT' && pool.cro.status === 'INCONSISTENT')}
                       onClick={() => onAllocate(member.id)}
-                    >分配</Button>
+                    >{policyStatus === 'CONFIGURING' ? '配置' : '分配'}</Button>
                     <Button
                       variant="link"
                       icon={<RotateCcw size={14} aria-hidden="true" />}
                       aria-label={`回收${member.name}额度`}
-                      disabled={member.status !== 'active'}
+                      disabled={member.status !== 'active' || policyStatus !== 'ENABLED'}
                       onClick={() => onRecover(member.id)}
                     >回收</Button>
                     <Button

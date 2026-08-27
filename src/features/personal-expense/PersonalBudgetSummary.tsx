@@ -13,6 +13,12 @@ const reasonLabels: Record<Exclude<PersonalBudgetBlockReason, null>, string> = {
   TENANT_ELIGIBLE_FUNDS_INSUFFICIENT: '当前资金不适用于本任务',
 }
 
+const reasonDescriptions: Record<Exclude<PersonalBudgetBlockReason, null>, string> = {
+  PERSONAL_BUDGET_INSUFFICIENT: '当前个人可用额度不足以启动本次任务，请联系租户管理员调整个人预算。',
+  TENANT_PAYMENT_CAPACITY_INSUFFICIENT: '您的个人预算仍有余额，但租户当前支付能力不足，任务暂时无法启动。个人预算不会扣除，请联系租户管理员。',
+  TENANT_ELIGIBLE_FUNDS_INSUFFICIENT: '本任务要求的资金类型当前不可用，个人预算不会扣除。请联系租户管理员。',
+}
+
 function displayAmount(value: number | null, serviceAvailable: boolean) {
   return serviceAvailable && value !== null
     ? new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value)
@@ -57,7 +63,7 @@ export function PersonalBudgetSummary({ overview }: { overview: PersonalBudgetOv
 
               <dl className="personal-budget-metrics">
                 <div><dt>个人可用额度</dt><dd>{displayAmount(item.personalAvailable, item.serviceAvailable)}</dd></div>
-                <div className={blocked ? 'is-emphasized' : ''}><dt>当前可执行额度</dt><dd>{displayAmount(item.taskExecutable, item.serviceAvailable)}</dd></div>
+                <div className={blocked ? 'is-emphasized' : ''}><dt>当前可执行额度（参考）</dt><dd>{displayAmount(item.accountExecutable, item.serviceAvailable)}</dd></div>
                 <div><dt>运行中预占</dt><dd>{displayAmount(item.reserved, item.serviceAvailable)}</dd></div>
                 <div><dt>累计消费</dt><dd>{displayAmount(item.consumed, item.serviceAvailable)}</dd></div>
               </dl>
@@ -67,7 +73,7 @@ export function PersonalBudgetSummary({ overview }: { overview: PersonalBudgetOv
                   <CircleAlert size={18} aria-hidden="true" />
                   <div>
                     <strong>{reasonLabels[item.blockingReason]}</strong>
-                    <p>您的个人预算仍有余额，但租户当前支付能力不足，任务暂时无法启动。个人预算不会扣除，请联系租户管理员。</p>
+                    <p>{reasonDescriptions[item.blockingReason]}</p>
                   </div>
                 </div>
               )}

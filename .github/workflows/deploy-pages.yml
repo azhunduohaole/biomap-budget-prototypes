@@ -35,6 +35,8 @@ jobs:
           npm run build
           mkdir -p dist/deduction-records
           cp dist/index.html dist/deduction-records/index.html
+          mkdir -p dist/opt/tenant-management
+          cp dist/index.html dist/opt/tenant-management/index.html
           touch dist/.nojekyll
       - name: Configure Pages
         uses: actions/configure-pages@v5

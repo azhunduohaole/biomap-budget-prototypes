@@ -2,6 +2,13 @@ export type Currency = 'credits' | 'cro'
 
 export type PoolStatus = 'NORMAL' | 'INCONSISTENT'
 
+export type BudgetPolicyStatus =
+  | 'DISABLED'
+  | 'CONFIGURING'
+  | 'ENABLING'
+  | 'ENABLED'
+  | 'DISABLING'
+
 export type MemberStatus = 'active' | 'disabled'
 
 export type BudgetBlockReason =
@@ -29,9 +36,17 @@ export interface PoolCurrencyBudget {
 }
 
 export interface BudgetPool {
-  policyEnabled: boolean
+  entitlementAllowed: boolean
+  policyStatus: BudgetPolicyStatus
   credits: PoolCurrencyBudget
   cro: PoolCurrencyBudget
+}
+
+export interface DraftBudgetEntry {
+  memberId: string
+  currency: Currency
+  amount: number
+  note: string
 }
 
 export interface MemberBudget {
@@ -55,20 +70,55 @@ export type LedgerOperation =
   | 'ALLOCATION'
   | 'RECOVERY'
   | 'RESERVATION'
+  | 'ADDITIONAL_RESERVATION'
   | 'SETTLEMENT'
   | 'RELEASE'
-  | 'REFUND'
+  | 'SYSTEM_RECOVERY'
+
+export type LedgerRecordCategory = 'BUDGET_MANAGEMENT' | 'TASK_BILLING'
+
+export type BillingScope = 'PERSONAL_BUDGET' | 'TENANT_ONLY' | null
+
+export type LedgerStatus = 'SUCCESS' | 'PROCESSING' | 'FAILED'
 
 export interface BudgetLedgerEntry {
   id: string
-  memberId: string
+  memberId?: string
+  memberName: string
+  memberEmail: string
   currency: Currency
+  recordCategory: LedgerRecordCategory
+  billingScope: BillingScope
   operation: LedgerOperation
   amount: number
-  availableAfter: number
-  reservedAfter: number
+  status: LedgerStatus
+  availableBefore?: number
+  availableAfter?: number
+  reservedBefore?: number
+  reservedAfter?: number
+  tenantLedgerBefore?: number
+  tenantLedgerAfter?: number
+  tenantReservedBefore?: number
+  tenantReservedAfter?: number
+  tenantUnallocatedBefore?: number
+  tenantUnallocatedAfter?: number
   actor: string
   timestamp: string
   taskId?: string
+  taskType?: string
+  taskName?: string
+  productLine?: string
+  billingMethod?: string
+  estimatedUsage?: string
+  actualUsage?: string
+  estimatedCost?: number
+  actualCost?: number
+  regularAmount?: number
+  giftAmount?: number
+  reservedAt?: string
+  settledAt?: string
   note: string
+  failureReason?: string
+  idempotencyKey?: string
+  migrated?: boolean
 }

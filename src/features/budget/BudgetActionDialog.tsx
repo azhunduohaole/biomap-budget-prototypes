@@ -13,9 +13,10 @@ interface BudgetActionDialogProps {
   pool: BudgetPool
   onClose: () => void
   onConfirm: (amount: number, note: string, currency: Currency) => string | null
+  draftMode?: boolean
 }
 
-export function BudgetActionDialog({ mode, targets, pool, onClose, onConfirm }: BudgetActionDialogProps) {
+export function BudgetActionDialog({ mode, targets, pool, onClose, onConfirm, draftMode = false }: BudgetActionDialogProps) {
   const [currency, setCurrency] = useState<Currency>('credits')
   const [amountText, setAmountText] = useState('')
   const [note, setNote] = useState('')
@@ -77,7 +78,7 @@ export function BudgetActionDialog({ mode, targets, pool, onClose, onConfirm }: 
   }
 
   const title = mode === 'allocate'
-    ? isBatch ? `批量分配额度（${targets.length} 人）` : `给${targets[0]?.name ?? ''}分配额度`
+    ? isBatch ? `批量${draftMode ? '配置' : '分配'}额度（${targets.length} 人）` : `给${targets[0]?.name ?? ''}${draftMode ? '配置' : '分配'}额度`
     : `回收${targets[0]?.name ?? ''}额度`
 
   return (
@@ -86,7 +87,7 @@ export function BudgetActionDialog({ mode, targets, pool, onClose, onConfirm }: 
         <header className="dialog-header">
           <div>
             <h3 id="budget-dialog-title">{title}</h3>
-            <span>{mode === 'allocate' ? '追加个人预算，不会立即扣减租户账面余额' : '仅可回收未消费、未预占的个人额度'}</span>
+            <span>{mode === 'allocate' ? draftMode ? '仅保存配置草稿，确认启用前不影响正式账务' : '追加个人预算，不会立即扣减租户账面余额' : '仅可回收未消费、未预占的个人额度'}</span>
           </div>
           <button type="button" className="icon-button" aria-label="关闭额度操作弹窗" title="关闭" onClick={onClose}>
             <X size={18} aria-hidden="true" />
@@ -160,7 +161,7 @@ export function BudgetActionDialog({ mode, targets, pool, onClose, onConfirm }: 
 
         <footer className="dialog-footer">
           <Button onClick={onClose}>取消</Button>
-          <Button variant="primary" onClick={submit}>{mode === 'allocate' ? '确认分配' : '确认回收'}</Button>
+          <Button variant="primary" onClick={submit}>{mode === 'allocate' ? draftMode ? '保存草稿' : '确认分配' : '确认回收'}</Button>
         </footer>
       </section>
     </div>
