@@ -12,7 +12,6 @@ export function formatAmount(value: number) {
 const reasonLabels: Record<Exclude<BudgetBlockReason, null>, string> = {
   PERSONAL_BUDGET_INSUFFICIENT: '个人额度不足',
   TENANT_PAYMENT_CAPACITY_INSUFFICIENT: '租户支付能力不足',
-  TENANT_ELIGIBLE_FUNDS_INSUFFICIENT: '当前资金不适用于本任务',
 }
 
 export function getBudgetStatus(budget: CurrencyBudget) {

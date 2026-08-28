@@ -11,7 +11,6 @@ export const initialPool: BudgetPool = {
     pendingAllocated: 0,
     unallocated: 88_800,
     spendable: 114_500,
-    eligibleSpendable: 114_500,
   },
   cro: {
     status: 'INCONSISTENT',
@@ -21,7 +20,6 @@ export const initialPool: BudgetPool = {
     pendingAllocated: 0,
     unallocated: 0,
     spendable: 0,
-    eligibleSpendable: 0,
   },
 }
 

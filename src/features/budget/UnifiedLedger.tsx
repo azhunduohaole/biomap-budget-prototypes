@@ -89,7 +89,6 @@ function LedgerDetailDrawer({ entry, onClose }: { entry: BudgetLedgerEntry; onCl
     ['操作人', entry.actor],
     ['操作备注', entry.note],
     ['失败原因', entry.failureReason ?? '--'],
-    ['幂等键', entry.idempotencyKey ?? '--'],
   ]
 
   return (
@@ -105,7 +104,7 @@ function LedgerDetailDrawer({ entry, onClose }: { entry: BudgetLedgerEntry; onCl
   )
 }
 
-export function UnifiedLedger({ entries, pool, memberId }: { entries: BudgetLedgerEntry[]; pool: BudgetPool; memberId?: string }) {
+export function UnifiedLedger({ entries, pool, memberId, reportingMonth }: { entries: BudgetLedgerEntry[]; pool: BudgetPool; memberId?: string; reportingMonth?: string }) {
   const [category, setCategory] = useState<'' | LedgerRecordCategory>('')
   const [billingScope, setBillingScope] = useState<'' | LedgerBillingScope>('')
   const [currency, setCurrency] = useState<'' | Currency>('')
@@ -134,11 +133,15 @@ export function UnifiedLedger({ entries, pool, memberId }: { entries: BudgetLedg
     return true
   }), [billingScope, category, currency, dateFrom, dateTo, entries, memberId, memberQuery, operation, productLine, status, taskQuery])
 
-  const creditsDeduction = scopedEntries.filter((entry) => entry.currency === 'credits' && entry.operation === 'SETTLEMENT').reduce((total, entry) => total + Math.abs(entry.amount), 0)
-  const croDeduction = scopedEntries.filter((entry) => entry.currency === 'cro' && entry.operation === 'SETTLEMENT').reduce((total, entry) => total + Math.abs(entry.amount), 0)
+  const currentMonth = reportingMonth ?? new Date().toISOString().slice(0, 7)
+  const currentMonthSettlements = scopedEntries.filter((entry) =>
+    entry.operation === 'SETTLEMENT'
+    && entry.status === 'SUCCESS'
+    && entry.timestamp.startsWith(currentMonth),
+  )
+  const creditsDeduction = currentMonthSettlements.filter((entry) => entry.currency === 'credits').reduce((total, entry) => total + Math.abs(entry.amount), 0)
+  const croDeduction = currentMonthSettlements.filter((entry) => entry.currency === 'cro').reduce((total, entry) => total + Math.abs(entry.amount), 0)
   const involvedUsers = new Set(scopedEntries.filter((entry) => entry.recordCategory === 'TASK_BILLING' && entry.memberId).map((entry) => entry.memberId)).size
-  const creditsReserved = scopedEntries.filter((entry) => entry.currency === 'credits' && entry.status === 'PROCESSING').reduce((total, entry) => total + Math.abs(entry.amount), 0)
-  const croReserved = scopedEntries.filter((entry) => entry.currency === 'cro' && entry.status === 'PROCESSING').reduce((total, entry) => total + Math.abs(entry.amount), 0)
 
   return (
     <section className="unified-ledger" aria-labelledby="unified-ledger-title">
@@ -147,7 +150,7 @@ export function UnifiedLedger({ entries, pool, memberId }: { entries: BudgetLedg
         <Button icon={<Download size={15} />} onClick={() => setExported(true)}>导出流水</Button>
       </div>
 
-      {!memberId && <dl className="ledger-summary-strip"><div><dt>本月 Credits 扣减</dt><dd aria-label={`本月 Credits 扣减 ${formatAmount(creditsDeduction)}`}>{formatAmount(creditsDeduction)}</dd></div><div><dt>本月 CRO币扣减</dt><dd aria-label={`本月 CRO币扣减 ${formatAmount(croDeduction)}`}>{formatAmount(croDeduction)}</dd></div><div><dt>涉及用户数</dt><dd>{involvedUsers}</dd></div><div><dt>当前预占</dt><dd className="ledger-current-reserved" aria-label={`当前预占 Credits ${formatAmount(creditsReserved)} CRO币 ${formatAmount(croReserved)}`}>Credits {formatAmount(creditsReserved)}<small>CRO币 {formatAmount(croReserved)}</small></dd></div><div><dt>租户可用余额</dt><dd className="ledger-tenant-balance">Credits {formatAmount(pool.credits.spendable)}<small>CRO币 {formatAmount(pool.cro.spendable)}</small></dd></div></dl>}
+      {!memberId && <dl className="ledger-summary-strip"><div><dt>本月 Credits 扣减</dt><dd aria-label={`本月 Credits 扣减 ${formatAmount(creditsDeduction)}`}>{formatAmount(creditsDeduction)}</dd></div><div><dt>本月 CRO币扣减</dt><dd aria-label={`本月 CRO币扣减 ${formatAmount(croDeduction)}`}>{formatAmount(croDeduction)}</dd></div><div><dt>涉及用户数</dt><dd>{involvedUsers}</dd></div><div><dt>当前预占</dt><dd className="ledger-current-reserved" aria-label={`当前预占 Credits ${formatAmount(pool.credits.reserved)} CRO币 ${formatAmount(pool.cro.reserved)}`}>Credits {formatAmount(pool.credits.reserved)}<small>CRO币 {formatAmount(pool.cro.reserved)}</small></dd></div><div><dt>租户可用余额</dt><dd className="ledger-tenant-balance">Credits {formatAmount(pool.credits.spendable)}<small>CRO币 {formatAmount(pool.cro.spendable)}</small></dd></div></dl>}
 
       <section className="ledger-filter-bar" aria-label="额度流水筛选">
         <label><span>记录分类</span><select aria-label="记录分类" value={category} onChange={(event) => setCategory(event.target.value as '' | LedgerRecordCategory)}><option value="">全部分类</option><option value="BUDGET_MANAGEMENT">预算管理</option><option value="TASK_BILLING">任务计费</option></select></label>
@@ -156,7 +159,7 @@ export function UnifiedLedger({ entries, pool, memberId }: { entries: BudgetLedg
         <label><span>任务</span><input aria-label="流水任务" value={taskQuery} onChange={(event) => setTaskQuery(event.target.value)} placeholder="任务名称或 ID" /></label>
         <label><span>币种</span><select aria-label="流水币种" value={currency} onChange={(event) => setCurrency(event.target.value as '' | Currency)}><option value="">全部币种</option><option value="credits">Credits</option><option value="cro">CRO币</option></select></label>
         <label><span>产品线</span><select aria-label="流水产品线" value={productLine} onChange={(event) => setProductLine(event.target.value)}><option value="">全部产品线</option><option value="AgentOS">AgentOS</option><option value="蛋白设计">蛋白设计</option><option value="智能实验">智能实验</option></select></label>
-        <label><span>状态</span><select aria-label="流水状态" value={status} onChange={(event) => setStatus(event.target.value as '' | LedgerStatus)}><option value="">全部状态</option><option value="SUCCESS">已完成</option><option value="PROCESSING">处理中</option><option value="FAILED">失败</option></select></label>
+        <label><span>状态</span><select aria-label="流水状态" value={status} onChange={(event) => setStatus(event.target.value as '' | LedgerStatus)}><option value="">全部状态</option><option value="SUCCESS">成功（含任务已结算）</option><option value="PROCESSING">处理中</option><option value="FAILED">失败</option></select></label>
         <label><span>操作类型</span><select aria-label="流水操作类型" value={operation} onChange={(event) => setOperation(event.target.value as '' | LedgerOperation)}><option value="">全部操作</option>{Object.entries(operationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label><span>开始时间</span><input aria-label="流水开始时间" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
         <label><span>结束时间</span><input aria-label="流水结束时间" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>

@@ -10,13 +10,11 @@ const currencyLabels = {
 const reasonLabels: Record<Exclude<PersonalBudgetBlockReason, null>, string> = {
   PERSONAL_BUDGET_INSUFFICIENT: '个人额度不足',
   TENANT_PAYMENT_CAPACITY_INSUFFICIENT: '租户支付能力不足',
-  TENANT_ELIGIBLE_FUNDS_INSUFFICIENT: '当前资金不适用于本任务',
 }
 
 const reasonDescriptions: Record<Exclude<PersonalBudgetBlockReason, null>, string> = {
   PERSONAL_BUDGET_INSUFFICIENT: '当前个人可用额度不足以启动本次任务，请联系租户管理员调整个人预算。',
   TENANT_PAYMENT_CAPACITY_INSUFFICIENT: '您的个人预算仍有余额，但租户当前支付能力不足，任务暂时无法启动。个人预算不会扣除，请联系租户管理员。',
-  TENANT_ELIGIBLE_FUNDS_INSUFFICIENT: '本任务要求的资金类型当前不可用，个人预算不会扣除。请联系租户管理员。',
 }
 
 function displayAmount(value: number | null, serviceAvailable: boolean) {

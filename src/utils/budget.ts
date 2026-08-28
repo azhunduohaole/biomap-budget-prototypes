@@ -250,38 +250,30 @@ export function deriveExecutableBudget(
   const personalAvailable = Math.max(0, member[currency].available)
   const poolBudget = pool[currency]
   const accountExecutable = Math.min(personalAvailable, Math.max(0, poolBudget.spendable))
-  const taskExecutable = Math.min(
-    personalAvailable,
-    Math.max(0, poolBudget.eligibleSpendable),
-  )
 
   if (personalAvailable === 0) {
     return {
       accountExecutable: 0,
-      taskExecutable: 0,
       reason: 'PERSONAL_BUDGET_INSUFFICIENT',
     }
   }
 
-  if (poolBudget.status === 'INCONSISTENT' || accountExecutable < personalAvailable) {
+  if (poolBudget.status === 'INCONSISTENT') {
     return {
-      accountExecutable,
-      taskExecutable: 0,
+      accountExecutable: 0,
       reason: 'TENANT_PAYMENT_CAPACITY_INSUFFICIENT',
     }
   }
 
-  if (taskExecutable < personalAvailable) {
+  if (accountExecutable < personalAvailable) {
     return {
       accountExecutable,
-      taskExecutable,
-      reason: 'TENANT_ELIGIBLE_FUNDS_INSUFFICIENT',
+      reason: 'TENANT_PAYMENT_CAPACITY_INSUFFICIENT',
     }
   }
 
   return {
     accountExecutable,
-    taskExecutable,
     reason: null,
   }
 }

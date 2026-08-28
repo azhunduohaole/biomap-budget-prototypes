@@ -73,7 +73,7 @@ describe('BudgetManagementPage', () => {
 
   it('exposes task billing fields needed to replace the legacy deduction page', async () => {
     const user = userEvent.setup()
-    render(<BudgetManagementPage />)
+    render(<BudgetManagementPage reportingMonth="2026-08" />)
 
     await user.click(screen.getByRole('tab', { name: '额度流水' }))
     expect(screen.getByText('本月 Credits 扣减')).toBeInTheDocument()
@@ -81,12 +81,15 @@ describe('BudgetManagementPage', () => {
     expect(screen.getByRole('combobox', { name: '记录分类' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: '计费范围' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: '流水产品线' })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: '流水状态' })).toBeInTheDocument()
+    const statusFilter = screen.getByRole('combobox', { name: '流水状态' })
+    expect(statusFilter).toBeInTheDocument()
+    expect(within(statusFilter).getByRole('option', { name: '成功（含任务已结算）' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: '流水操作类型' })).toBeInTheDocument()
     expect(screen.getByLabelText('流水开始时间')).toBeInTheDocument()
     expect(screen.getByLabelText('流水结束时间')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '导出流水' })).toBeInTheDocument()
-    expect(screen.getByLabelText('当前预占 Credits 1,200 CRO币 0')).toBeInTheDocument()
+    expect(screen.getByLabelText('本月 Credits 扣减 600')).toBeInTheDocument()
+    expect(screen.getByLabelText('当前预占 Credits 5,500 CRO币 0')).toBeInTheDocument()
 
     const settlementRow = screen.getByRole('row', { name: /抗体亲和力预测/ })
     expect(within(settlementRow).getByText('蛋白设计 · 抗体设计')).toBeInTheDocument()
@@ -95,7 +98,7 @@ describe('BudgetManagementPage', () => {
     expect(within(screen.getByRole('row', { name: /抗体项目首轮预算/ })).getByText('已完成')).toBeInTheDocument()
 
     await user.selectOptions(screen.getByRole('combobox', { name: '计费范围' }), 'TENANT_ONLY')
-    expect(screen.getByLabelText('本月 Credits 扣减 2,400')).toBeInTheDocument()
+    expect(screen.getByLabelText('本月 Credits 扣减 0')).toBeInTheDocument()
     expect(screen.queryByText('抗体亲和力预测')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '查看历史租户级计费详情' }))
@@ -103,6 +106,7 @@ describe('BudgetManagementPage', () => {
     expect(within(drawer).getByText('租户级计费')).toBeInTheDocument()
     expect(within(drawer).getByText('普通额度')).toBeInTheDocument()
     expect(within(drawer).getByText('实际用量')).toBeInTheDocument()
+    expect(within(drawer).queryByText('幂等键')).not.toBeInTheDocument()
   })
 
   it('prioritizes a disabled account over budget insufficiency', () => {
@@ -113,7 +117,8 @@ describe('BudgetManagementPage', () => {
     expect(within(disabledMember).queryByText('个人额度不足')).not.toBeInTheDocument()
   })
 
-  it('keeps personal budget visible while explaining zero executable CRO capacity', () => {
+  it('keeps personal budget visible while explaining zero executable CRO capacity', async () => {
+    const user = userEvent.setup()
     render(<BudgetManagementPage />)
 
     const zhangRow = screen.getByRole('row', { name: /张雯/ })
@@ -124,6 +129,12 @@ describe('BudgetManagementPage', () => {
     const croSummary = screen.getByRole('region', { name: 'CRO币 额度概览' })
     expect(within(croSummary).getByText('租户账面余额')).toBeInTheDocument()
     expect(within(croSummary).getByLabelText('租户账面余额 0')).toBeInTheDocument()
+
+    const creditsCell = within(zhangRow).getByText('个人可用 8,200').closest('td') as HTMLTableCellElement
+    await user.click(within(creditsCell).getByText('查看组成'))
+    expect(within(creditsCell).getByText('个人可用额度')).toBeInTheDocument()
+    expect(within(creditsCell).getByText('租户可支付余额')).toBeInTheDocument()
+    expect(within(creditsCell).queryByText('任务适用资金')).not.toBeInTheDocument()
   })
 
   it('allocates Credits without deducting the tenant ledger balance', async () => {

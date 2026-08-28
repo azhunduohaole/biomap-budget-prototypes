@@ -34,7 +34,6 @@ const member = (available: number): MemberBudget => ({
 
 const pool = (
   spendable: number,
-  eligibleSpendable: number,
   status: PoolStatus = 'NORMAL',
   ): BudgetPool => ({
     entitlementAllowed: true,
@@ -47,7 +46,6 @@ const pool = (
     pendingAllocated: 0,
     unallocated: 0,
     spendable,
-    eligibleSpendable,
   },
   cro: {
     status,
@@ -57,43 +55,38 @@ const pool = (
     pendingAllocated: 0,
     unallocated: 0,
     spendable,
-    eligibleSpendable,
   },
 })
 
 describe('deriveExecutableBudget', () => {
-  it('caps task executable amount by task-eligible tenant funds', () => {
-    expect(deriveExecutableBudget(member(800), pool(1_000, 300), 'credits')).toEqual({
+  it('caps executable amount only by personal and tenant spendable balances', () => {
+    expect(deriveExecutableBudget(member(800), pool(1_000), 'credits')).toEqual({
       accountExecutable: 800,
-      taskExecutable: 300,
-      reason: 'TENANT_ELIGIBLE_FUNDS_INSUFFICIENT',
+      reason: null,
     })
   })
 
   it('keeps personal budget visible when the tenant pool is inconsistent', () => {
-    expect(deriveExecutableBudget(member(800), pool(0, 0, 'INCONSISTENT'), 'credits')).toEqual({
+    expect(deriveExecutableBudget(member(800), pool(0, 'INCONSISTENT'), 'credits')).toEqual({
       accountExecutable: 0,
-      taskExecutable: 0,
       reason: 'TENANT_PAYMENT_CAPACITY_INSUFFICIENT',
     })
   })
 
   it('reports personal budget exhaustion before tenant capacity', () => {
-    expect(deriveExecutableBudget(member(0), pool(5_000, 5_000), 'credits')).toEqual({
+    expect(deriveExecutableBudget(member(0), pool(5_000), 'credits')).toEqual({
       accountExecutable: 0,
-      taskExecutable: 0,
       reason: 'PERSONAL_BUDGET_INSUFFICIENT',
     })
   })
 
   it('isolates an inconsistent CRO pool from healthy Credits', () => {
-    const sourcePool = pool(5_000, 5_000)
+    const sourcePool = pool(5_000)
     sourcePool.cro.status = 'INCONSISTENT'
 
     expect(deriveExecutableBudget(member(800), sourcePool, 'credits').reason).toBeNull()
     expect(deriveExecutableBudget(member(800), sourcePool, 'cro')).toEqual({
-      accountExecutable: 800,
-      taskExecutable: 0,
+      accountExecutable: 0,
       reason: 'TENANT_PAYMENT_CAPACITY_INSUFFICIENT',
     })
   })
@@ -101,7 +94,7 @@ describe('deriveExecutableBudget', () => {
 
 describe('budget mutations', () => {
   it('reserves one member commitment without enabling or blocking another member', () => {
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.unallocated = 1_000
     sourcePool.cro.unallocated = 1_000
     sourcePool.policyStatus = 'CONFIGURING'
@@ -128,7 +121,7 @@ describe('budget mutations', () => {
   })
 
   it('enables an explicitly configured zero-budget member', () => {
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.unallocated = 1_000
     sourcePool.cro.unallocated = 1_000
     sourcePool.policyStatus = 'CONFIGURING'
@@ -150,7 +143,7 @@ describe('budget mutations', () => {
   })
 
   it('moves pending commitments into formal member budgets on activation success', () => {
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.unallocated = 1_000
     sourcePool.cro.unallocated = 1_000
     sourcePool.policyStatus = 'CONFIGURING'
@@ -172,7 +165,7 @@ describe('budget mutations', () => {
   })
 
   it('releases pending commitments and preserves the draft on activation failure', () => {
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.unallocated = 1_000
     sourcePool.cro.unallocated = 1_000
     sourcePool.policyStatus = 'CONFIGURING'
@@ -195,7 +188,7 @@ describe('budget mutations', () => {
   })
 
   it('rejects a member batch atomically when either currency exceeds the latest hard pool', () => {
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.unallocated = 500
     sourcePool.cro.unallocated = 100
     sourcePool.policyStatus = 'CONFIGURING'
@@ -212,7 +205,7 @@ describe('budget mutations', () => {
   })
 
   it('clears active commitments when the personal budget policy is disabled', () => {
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.allocatedAvailable = 100
     sourcePool.credits.unallocated = 900
     const result = resetActiveCommitments([member(100)], sourcePool)
@@ -226,7 +219,7 @@ describe('budget mutations', () => {
 
   it('allocates the same amount to every selected member atomically', () => {
     const secondMember = { ...member(100), id: 'member-2', email: 'second@biomap.com' }
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.unallocated = 500
     sourcePool.credits.allocatedAvailable = 200
 
@@ -244,7 +237,7 @@ describe('budget mutations', () => {
 
   it('rejects a batch allocation when the total exceeds unallocated funds', () => {
     const secondMember = { ...member(100), id: 'member-2', email: 'second@biomap.com' }
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.unallocated = 150
 
     expect(() =>
@@ -258,7 +251,7 @@ describe('budget mutations', () => {
   })
 
   it('recovers only available personal budget into the unallocated pool', () => {
-    const sourcePool = pool(1_000, 1_000)
+    const sourcePool = pool(1_000)
     sourcePool.credits.unallocated = 400
     sourcePool.credits.allocatedAvailable = 100
 

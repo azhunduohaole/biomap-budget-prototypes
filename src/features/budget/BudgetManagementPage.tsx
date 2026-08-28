@@ -43,6 +43,7 @@ interface ActionState {
 interface BudgetManagementPageProps {
   initialEntitlementAllowed?: boolean
   initialPolicyStatus?: BudgetPolicyStatus
+  reportingMonth?: string
 }
 
 function createInitialState(entitlementAllowed: boolean, policyStatus: BudgetPolicyStatus) {
@@ -114,6 +115,7 @@ function createLedgerEntries(
 export function BudgetManagementPage({
   initialEntitlementAllowed = true,
   initialPolicyStatus = 'ENABLED',
+  reportingMonth,
 }: BudgetManagementPageProps) {
   const initialState = useMemo(
     () => createInitialState(initialEntitlementAllowed, initialPolicyStatus),
@@ -264,7 +266,7 @@ export function BudgetManagementPage({
       {!pool.entitlementAllowed ? (
         <>
           <BudgetSummary pool={pool} />
-          <UnifiedLedger entries={ledger} pool={pool} />
+          <UnifiedLedger entries={ledger} pool={pool} reportingMonth={reportingMonth} />
         </>
       ) : (
         <>
@@ -304,7 +306,7 @@ export function BudgetManagementPage({
                 onBatchAllocate={() => setAction({ mode: 'allocate', memberIds: selectedIds })}
               />
             </>
-          ) : <UnifiedLedger entries={ledger} pool={pool} />}
+          ) : <UnifiedLedger entries={ledger} pool={pool} reportingMonth={reportingMonth} />}
         </>
       )}
 

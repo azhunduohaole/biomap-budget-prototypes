@@ -10,7 +10,6 @@ export type PersonalMemberBudgetStatus = 'UNCONFIGURED' | 'ENABLING' | 'ENABLED'
 export type PersonalBudgetBlockReason =
   | 'PERSONAL_BUDGET_INSUFFICIENT'
   | 'TENANT_PAYMENT_CAPACITY_INSUFFICIENT'
-  | 'TENANT_ELIGIBLE_FUNDS_INSUFFICIENT'
   | null
 
 export interface PersonalBudgetOverview {

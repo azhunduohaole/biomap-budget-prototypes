@@ -22,7 +22,6 @@ export interface MemberBudgetDraft {
 export type BudgetBlockReason =
   | 'PERSONAL_BUDGET_INSUFFICIENT'
   | 'TENANT_PAYMENT_CAPACITY_INSUFFICIENT'
-  | 'TENANT_ELIGIBLE_FUNDS_INSUFFICIENT'
   | null
 
 export interface CurrencyBudget {
@@ -41,7 +40,6 @@ export interface PoolCurrencyBudget {
   pendingAllocated: number
   unallocated: number
   spendable: number
-  eligibleSpendable: number
 }
 
 export interface BudgetPool {
@@ -73,7 +71,6 @@ export interface MemberBudget {
 
 export interface ExecutableBudget {
   accountExecutable: number
-  taskExecutable: number
   reason: BudgetBlockReason
 }
 

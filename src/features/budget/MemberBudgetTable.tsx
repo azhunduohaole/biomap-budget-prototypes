@@ -44,7 +44,6 @@ function CurrencyCell({ member, pool, currency, draftAmount, policyStatus }: { m
         <dl>
           <div><dt>个人可用额度</dt><dd>{formatAmount(budget.available)}</dd></div>
           <div><dt>租户可支付余额</dt><dd>{formatAmount(pool[currency].spendable)}</dd></div>
-          <div><dt>任务适用资金</dt><dd>{formatAmount(pool[currency].eligibleSpendable)}</dd></div>
         </dl>
       </details>
     </div>
