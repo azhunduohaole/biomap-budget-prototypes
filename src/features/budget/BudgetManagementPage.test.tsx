@@ -15,25 +15,60 @@ describe('BudgetManagementPage', () => {
     expect(screen.getByText('历史租户级计费')).toBeInTheDocument()
   })
 
-  it('keeps first-round allocations as drafts until enablement is confirmed', async () => {
+  it('activates one member without blocking or enabling another member', async () => {
     const user = userEvent.setup()
     render(<BudgetManagementPage initialPolicyStatus="DISABLED" />)
 
     await user.click(screen.getByRole('button', { name: '开始配置' }))
-    await user.click(screen.getByRole('button', { name: '给张雯配置额度' }))
-    await user.type(screen.getByLabelText('分配金额'), '200')
-    await user.type(screen.getByLabelText('操作备注'), '首轮预算草稿')
-    await user.click(screen.getByRole('button', { name: '保存草稿' }))
+    await user.click(screen.getByRole('button', { name: '给张雯配置预算' }))
+    expect(screen.getByRole('dialog', { name: '配置 张雯 的个人预算' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Credits 预算上限'), '200')
+    await user.type(screen.getByLabelText('CRO币预算上限'), '0')
+    await user.type(screen.getByLabelText('配置备注'), '首轮成员预算')
+    await user.click(screen.getByRole('button', { name: '确认并启用' }))
 
-    expect(within(screen.getByRole('row', { name: /张雯/ })).getByText('草稿 200')).toBeInTheDocument()
-    expect(screen.getByText('预计分配 Credits 200 · CRO币 0')).toBeInTheDocument()
-    expect(screen.queryByText('首轮预算草稿')).not.toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'Credits 额度概览' })).getByLabelText('租户账面余额 120,000')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('张雯 已进入启用中')
+    expect(within(screen.getByRole('row', { name: /张雯/ })).getByText('启用中', { selector: '.member-budget-status' })).toBeInTheDocument()
+    expect(within(screen.getByRole('row', { name: /秦雯/ })).getByText('待配置')).toBeInTheDocument()
+    expect(within(screen.getByRole('row', { name: /秦雯/ })).getByRole('button', { name: '给秦雯配置预算' })).not.toBeDisabled()
 
-    await user.click(screen.getByRole('button', { name: '确认启用' }))
+    expect(await screen.findByText('张雯 的个人预算已生效')).toBeInTheDocument()
+    expect(within(screen.getByRole('row', { name: /张雯/ })).getByText('已启用', { selector: '.member-budget-status' })).toBeInTheDocument()
+    expect(within(screen.getByRole('row', { name: /张雯/ })).getByText('个人可用 200')).toBeInTheDocument()
+    expect(screen.getByText('已启用 1 / 5 人')).toBeInTheDocument()
+  })
+
+  it('requires explicit values for both currencies before confirming a member budget', async () => {
+    const user = userEvent.setup()
+    render(<BudgetManagementPage initialPolicyStatus="DISABLED" />)
+
+    await user.click(screen.getByRole('button', { name: '开始配置' }))
+    await user.click(screen.getByRole('button', { name: '给张雯配置预算' }))
+    await user.type(screen.getByLabelText('配置备注'), '补充零额度原因')
+    await user.click(screen.getByRole('button', { name: '确认并启用' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('请填写 Credits 和 CRO币额度；如无需分配请填写 0')
+    expect(screen.getByRole('dialog', { name: '配置 张雯 的个人预算' })).toBeInTheDocument()
+  })
+
+  it('allows explicit zero budgets and enables the tenant after every active member is confirmed', async () => {
+    const user = userEvent.setup()
+    render(<BudgetManagementPage initialPolicyStatus="DISABLED" />)
+
+    await user.click(screen.getByRole('button', { name: '开始配置' }))
+    for (const name of ['张雯', '秦雯', '辛平', '柯宇', '荣伟']) {
+      await user.click(screen.getByRole('button', { name: `给${name}配置预算` }))
+      await user.type(screen.getByLabelText('Credits 预算上限'), '0')
+      await user.type(screen.getByLabelText('CRO币预算上限'), '0')
+      await user.type(screen.getByLabelText('配置备注'), '零额度启用')
+      await user.click(screen.getByRole('button', { name: '确认并启用' }))
+      await new Promise((resolve) => window.setTimeout(resolve, 350))
+    }
+
     expect(await screen.findByText('个人预算已启用', { selector: '#policy-status-title' })).toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: '额度流水' }))
-    expect(screen.getByText('首轮预算草稿')).toBeInTheDocument()
+    expect(screen.getByText('已启用 5 / 5 人')).toBeInTheDocument()
+    expect(within(screen.getByRole('row', { name: /张雯/ })).getAllByText('个人可用 0')).toHaveLength(2)
+    expect(within(screen.getByRole('row', { name: /张雯/ })).getAllByText('个人额度不足', { selector: '.block-reason' })).toHaveLength(2)
   })
 
   it('exposes task billing fields needed to replace the legacy deduction page', async () => {

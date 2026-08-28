@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { BioMapOsHeader } from '../../components/BioMapOsHeader'
 import { personalBudgetOverview, personalExpenseRecords } from '../../data/personalExpenseMock'
-import type { BudgetPolicyStatus, PersonalExpenseRecord } from '../../types/personalExpense'
+import type { BudgetPolicyStatus, PersonalExpenseRecord, PersonalMemberBudgetStatus } from '../../types/personalExpense'
 import { PersonalBudgetSummary } from './PersonalBudgetSummary'
 import { PersonalExpenseDrawer } from './PersonalExpenseDrawer'
 import { emptyExpenseFilters, PersonalExpenseFilters } from './PersonalExpenseFilters'
@@ -13,14 +13,28 @@ import '../../styles/personal-expense.css'
 interface PersonalExpensePageProps {
   entitlementAllowed?: boolean
   policyStatus?: BudgetPolicyStatus
+  memberBudgetStatus?: PersonalMemberBudgetStatus
 }
 
 export function PersonalExpensePage({
   entitlementAllowed = true,
   policyStatus = 'ENABLED',
+  memberBudgetStatus,
 }: PersonalExpensePageProps) {
-  const budgetServiceUnavailable = new URLSearchParams(window.location.search).get('budgetService') === 'unavailable'
-  const overview = budgetServiceUnavailable
+  const params = new URLSearchParams(window.location.search)
+  const budgetServiceUnavailable = params.get('budgetService') === 'unavailable'
+  const memberBudgetZero = params.get('memberBudgetZero') === 'true'
+  const resolvedMemberStatus = memberBudgetStatus
+    ?? (policyStatus === 'ENABLED' && entitlementAllowed ? 'ENABLED' : 'UNCONFIGURED')
+  const overview = memberBudgetZero
+    ? personalBudgetOverview.map((item) => ({
+      ...item,
+      personalAvailable: 0,
+      accountExecutable: 0,
+      status: '已耗尽' as const,
+      blockingReason: 'PERSONAL_BUDGET_INSUFFICIENT' as const,
+    }))
+    : budgetServiceUnavailable
     ? personalBudgetOverview.map((item) => ({ ...item, serviceAvailable: false, status: null, blockingReason: null }))
     : personalBudgetOverview
   const [draftFilters, setDraftFilters] = useState(emptyExpenseFilters)
@@ -48,8 +62,12 @@ export function PersonalExpensePage({
 
   const draftFilterCount = Object.values(draftFilters).filter(Boolean).length
   const hasAppliedFilters = Object.values(appliedFilters).some(Boolean)
-  const transitionInProgress = policyStatus === 'ENABLING' || policyStatus === 'DISABLING'
-  const personalBudgetActive = entitlementAllowed && policyStatus === 'ENABLED'
+  const tenantTransitionInProgress = policyStatus === 'ENABLING' || policyStatus === 'DISABLING'
+  const memberTransitionInProgress = entitlementAllowed && resolvedMemberStatus === 'ENABLING'
+  const memberEnableFailed = entitlementAllowed && resolvedMemberStatus === 'ENABLE_FAILED'
+  const personalBudgetActive = entitlementAllowed
+    && (policyStatus === 'CONFIGURING' || policyStatus === 'ENABLED')
+    && resolvedMemberStatus === 'ENABLED'
 
   return (
     <div className="personal-app-shell">
@@ -64,7 +82,23 @@ export function PersonalExpensePage({
           </header>
           {personalBudgetActive ? (
             <PersonalBudgetSummary overview={overview} />
-          ) : transitionInProgress ? (
+          ) : memberTransitionInProgress ? (
+            <div className="personal-policy-notice is-warning" role="status">
+              <AlertTriangle size={18} aria-hidden="true" />
+              <div>
+                <strong>您的个人预算正在生效，付费任务暂不可用。</strong>
+                <p>仅影响当前账号，其他租户成员不受影响；生效完成后即可继续提交任务。</p>
+              </div>
+            </div>
+          ) : memberEnableFailed ? (
+            <div className="personal-policy-notice is-warning" role="status">
+              <AlertTriangle size={18} aria-hidden="true" />
+              <div>
+                <strong>个人预算启用失败，付费任务暂不可用。</strong>
+                <p>请联系租户管理员重试配置；个人额度不会被错误扣减。</p>
+              </div>
+            </div>
+          ) : tenantTransitionInProgress ? (
             <div className="personal-policy-notice is-warning" role="status">
               <AlertTriangle size={18} aria-hidden="true" />
               <div>

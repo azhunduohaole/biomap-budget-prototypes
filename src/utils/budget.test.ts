@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import type { BudgetPool, CurrencyBudget, DraftBudgetEntry, MemberBudget, PoolStatus } from '../types/budget'
+import type { BudgetPool, CurrencyBudget, MemberBudget, PoolStatus } from '../types/budget'
 import { initialMembers, initialPool } from '../data/mockData'
 import {
-  activateDraftBudgets,
   allocateBudget,
+  completeMemberBudgetActivation,
+  confirmMemberBudgets,
   deriveExecutableBudget,
   recoverBudget,
   resetActiveCommitments,
-  upsertDraftBudget,
 } from './budget'
 
 const currencyBudget = (available: number): CurrencyBudget => ({
@@ -25,6 +25,8 @@ const member = (available: number): MemberBudget => ({
   name: 'Researcher',
   role: '抗体研究员',
   status: 'active',
+  budgetStatus: 'UNCONFIGURED',
+  activationDraft: null,
   lastSpentAt: '2026-08-25 16:22:08',
   credits: currencyBudget(available),
   cro: currencyBudget(available),
@@ -42,6 +44,7 @@ const pool = (
     ledgerBalance: spendable,
     reserved: 0,
     allocatedAvailable: 0,
+    pendingAllocated: 0,
     unallocated: 0,
     spendable,
     eligibleSpendable,
@@ -51,6 +54,7 @@ const pool = (
     ledgerBalance: spendable,
     reserved: 0,
     allocatedAvailable: 0,
+    pendingAllocated: 0,
     unallocated: 0,
     spendable,
     eligibleSpendable,
@@ -96,25 +100,115 @@ describe('deriveExecutableBudget', () => {
 })
 
 describe('budget mutations', () => {
-  it('keeps configuration drafts outside the formal tenant and member ledgers', () => {
+  it('reserves one member commitment without enabling or blocking another member', () => {
     const sourcePool = pool(1_000, 1_000)
     sourcePool.credits.unallocated = 1_000
-    const sourceMember = member(0)
+    sourcePool.cro.unallocated = 1_000
+    sourcePool.policyStatus = 'CONFIGURING'
+    const secondMember = { ...member(0), id: 'member-2', email: 'second@biomap.com' }
 
-    const drafts = upsertDraftBudget([], {
-      memberId: sourceMember.id,
-      currency: 'credits',
-      amount: 300,
-      note: '首轮预算草稿',
+    const confirmed = confirmMemberBudgets([member(0), secondMember], sourcePool, [{
+      memberId: 'member-1',
+      credits: 300,
+      cro: 120,
+      note: '首轮成员预算',
+    }])
+
+    expect(confirmed.members[0]).toMatchObject({
+      budgetStatus: 'ENABLING',
+      activationDraft: { credits: 300, cro: 120, note: '首轮成员预算' },
     })
+    expect(confirmed.members[0].credits.available).toBe(0)
+    expect(confirmed.members[1].budgetStatus).toBe('UNCONFIGURED')
+    expect(confirmed.pool.policyStatus).toBe('CONFIGURING')
+    expect(confirmed.pool.credits.pendingAllocated).toBe(300)
+    expect(confirmed.pool.credits.unallocated).toBe(700)
+    expect(confirmed.pool.cro.pendingAllocated).toBe(120)
+    expect(confirmed.pool.cro.unallocated).toBe(880)
+  })
 
-    expect(drafts).toHaveLength(1)
-    expect(sourceMember.credits.available).toBe(0)
-    expect(sourcePool.credits.unallocated).toBe(1_000)
+  it('enables an explicitly configured zero-budget member', () => {
+    const sourcePool = pool(1_000, 1_000)
+    sourcePool.credits.unallocated = 1_000
+    sourcePool.cro.unallocated = 1_000
+    sourcePool.policyStatus = 'CONFIGURING'
 
-    const activated = activateDraftBudgets([sourceMember], sourcePool, drafts)
-    expect(activated.members[0].credits.available).toBe(300)
-    expect(activated.pool.credits.unallocated).toBe(700)
+    const confirmed = confirmMemberBudgets([member(0)], sourcePool, [{
+      memberId: 'member-1',
+      credits: 0,
+      cro: 0,
+      note: '零额度启用',
+    }])
+    const completed = completeMemberBudgetActivation(confirmed.members, confirmed.pool, 'member-1', true)
+
+    expect(completed.members[0].budgetStatus).toBe('ENABLED')
+    expect(completed.members[0].credits.available).toBe(0)
+    expect(completed.members[0].cro.available).toBe(0)
+    expect(completed.members[0].activationDraft).toBeNull()
+    expect(completed.pool.credits.unallocated).toBe(1_000)
+    expect(completed.pool.cro.unallocated).toBe(1_000)
+  })
+
+  it('moves pending commitments into formal member budgets on activation success', () => {
+    const sourcePool = pool(1_000, 1_000)
+    sourcePool.credits.unallocated = 1_000
+    sourcePool.cro.unallocated = 1_000
+    sourcePool.policyStatus = 'CONFIGURING'
+    const confirmed = confirmMemberBudgets([member(0)], sourcePool, [{
+      memberId: 'member-1',
+      credits: 300,
+      cro: 120,
+      note: '首轮成员预算',
+    }])
+
+    const completed = completeMemberBudgetActivation(confirmed.members, confirmed.pool, 'member-1', true)
+
+    expect(completed.members[0].budgetStatus).toBe('ENABLED')
+    expect(completed.members[0].credits.available).toBe(300)
+    expect(completed.members[0].cro.available).toBe(120)
+    expect(completed.pool.credits.pendingAllocated).toBe(0)
+    expect(completed.pool.credits.allocatedAvailable).toBe(300)
+    expect(completed.pool.credits.unallocated).toBe(700)
+  })
+
+  it('releases pending commitments and preserves the draft on activation failure', () => {
+    const sourcePool = pool(1_000, 1_000)
+    sourcePool.credits.unallocated = 1_000
+    sourcePool.cro.unallocated = 1_000
+    sourcePool.policyStatus = 'CONFIGURING'
+    const confirmed = confirmMemberBudgets([member(0)], sourcePool, [{
+      memberId: 'member-1',
+      credits: 300,
+      cro: 120,
+      note: '失败后重试',
+    }])
+
+    const failed = completeMemberBudgetActivation(confirmed.members, confirmed.pool, 'member-1', false)
+
+    expect(failed.members[0]).toMatchObject({
+      budgetStatus: 'ENABLE_FAILED',
+      activationDraft: { credits: 300, cro: 120, note: '失败后重试' },
+    })
+    expect(failed.pool.credits.pendingAllocated).toBe(0)
+    expect(failed.pool.credits.unallocated).toBe(1_000)
+    expect(failed.pool.cro.unallocated).toBe(1_000)
+  })
+
+  it('rejects a member batch atomically when either currency exceeds the latest hard pool', () => {
+    const sourcePool = pool(1_000, 1_000)
+    sourcePool.credits.unallocated = 500
+    sourcePool.cro.unallocated = 100
+    sourcePool.policyStatus = 'CONFIGURING'
+    const secondMember = { ...member(0), id: 'member-2', email: 'second@biomap.com' }
+
+    expect(() => confirmMemberBudgets([member(0), secondMember], sourcePool, [
+      { memberId: 'member-1', credits: 200, cro: 60, note: 'A' },
+      { memberId: 'member-2', credits: 200, cro: 60, note: 'B' },
+    ])).toThrow('CRO币待生效额度超过租户未分配额度')
+
+    expect(sourcePool.credits.unallocated).toBe(500)
+    expect(sourcePool.cro.unallocated).toBe(100)
+    expect(sourcePool.credits.pendingAllocated).toBe(0)
   })
 
   it('clears active commitments when the personal budget policy is disabled', () => {
@@ -124,7 +218,9 @@ describe('budget mutations', () => {
     const result = resetActiveCommitments([member(100)], sourcePool)
 
     expect(result.members[0].credits.available).toBe(0)
+    expect(result.members[0].budgetStatus).toBe('UNCONFIGURED')
     expect(result.pool.credits.allocatedAvailable).toBe(0)
+    expect(result.pool.credits.pendingAllocated).toBe(0)
     expect(result.pool.credits.unallocated).toBe(1_000)
   })
 
@@ -178,20 +274,6 @@ describe('budget mutations', () => {
   })
 })
 
-describe('draft validation', () => {
-  it('rejects a draft total that exceeds the tenant allocation capacity', () => {
-    const sourcePool = pool(1_000, 1_000)
-    sourcePool.credits.unallocated = 500
-    const drafts: DraftBudgetEntry[] = [
-      { memberId: 'member-1', currency: 'credits', amount: 300, note: 'A' },
-      { memberId: 'member-2', currency: 'credits', amount: 300, note: 'B' },
-    ]
-
-    expect(() => activateDraftBudgets([member(0), { ...member(0), id: 'member-2' }], sourcePool, drafts))
-      .toThrow('首轮分配总额不能超过租户未分配额度')
-  })
-})
-
 describe('budget fixtures', () => {
   it('reconciles the healthy Credits pool with member subaccounts', () => {
     const memberAvailable = initialMembers.reduce((total, item) => total + item.credits.available, 0)
@@ -201,6 +283,7 @@ describe('budget fixtures', () => {
     expect(initialPool.credits.reserved).toBe(memberReserved)
     expect(
       initialPool.credits.allocatedAvailable
+      + initialPool.credits.pendingAllocated
       + initialPool.credits.reserved
       + initialPool.credits.unallocated,
     ).toBe(initialPool.credits.ledgerBalance)

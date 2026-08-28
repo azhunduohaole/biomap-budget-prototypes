@@ -1,7 +1,7 @@
 import { CircleAlert, Clock3, LoaderCircle, Settings2, ShieldCheck } from 'lucide-react'
 
 import { Button } from '../../components/ui/Button'
-import type { BudgetPolicyStatus, DraftBudgetEntry } from '../../types/budget'
+import type { BudgetPolicyStatus, DraftBudgetEntry, MemberBudget } from '../../types/budget'
 import { formatAmount } from './BudgetStatus'
 
 const statusMeta: Record<BudgetPolicyStatus, { label: string; description: string }> = {
@@ -17,22 +17,25 @@ export function BudgetPolicyControl({
   drafts,
   onStart,
   onCancel,
-  onEnable,
   onDisable,
+  members,
 }: {
   status: BudgetPolicyStatus
   drafts: DraftBudgetEntry[]
   onStart: () => void
   onCancel: () => void
-  onEnable: () => void
   onDisable: () => void
+  members: MemberBudget[]
 }) {
   const meta = statusMeta[status]
   const draftTotals = drafts.reduce(
     (totals, item) => ({ ...totals, [item.currency]: totals[item.currency] + item.amount }),
     { credits: 0, cro: 0 },
   )
-  const draftMemberCount = new Set(drafts.map((item) => item.memberId)).size
+  const activeMemberCount = members.filter((item) => item.status === 'active').length
+  const enabledMemberCount = members.filter((item) => item.status === 'active' && item.budgetStatus === 'ENABLED').length
+  const enablingMemberCount = members.filter((item) => item.status === 'active' && item.budgetStatus === 'ENABLING').length
+  const unconfiguredMemberCount = members.filter((item) => item.status === 'active' && item.budgetStatus !== 'ENABLED').length
   const transitioning = status === 'ENABLING' || status === 'DISABLING'
 
   return (
@@ -48,17 +51,18 @@ export function BudgetPolicyControl({
         </div>
       </div>
 
-      {status === 'CONFIGURING' && (
+      {(status === 'CONFIGURING' || status === 'ENABLED') && (
         <div className="policy-draft-summary">
-          <span><Clock3 size={15} />草稿剩余时间 29:42</span>
-          <strong>预计分配 Credits {formatAmount(draftTotals.credits)} · CRO币 {formatAmount(draftTotals.cro)}</strong>
-          <span>已配置 {draftMemberCount} 人 · 未配置 {Math.max(0, 6 - draftMemberCount)} 人</span>
+          <span><Clock3 size={15} />{status === 'CONFIGURING' ? '成员逐个确认，生效互不阻断' : '所有正常成员均已完成预算启用'}</span>
+          {status === 'CONFIGURING' && <span>草稿剩余时间 30:00</span>}
+          <strong>已启用 {enabledMemberCount} / {activeMemberCount} 人</strong>
+          <span>启用中 {enablingMemberCount} 人 · 待配置 {unconfiguredMemberCount - enablingMemberCount} 人</span>
         </div>
       )}
 
       <div className="policy-status-actions">
         {status === 'DISABLED' && <Button variant="primary" onClick={onStart}>开始配置</Button>}
-        {status === 'CONFIGURING' && <><Button onClick={onCancel}>取消配置</Button><Button variant="primary" disabled={drafts.length === 0} onClick={onEnable}>确认启用</Button></>}
+        {status === 'CONFIGURING' && <Button onClick={onCancel}>取消配置</Button>}
         {status === 'ENABLED' && <Button variant="danger" onClick={onDisable}>关闭个人预算</Button>}
         {transitioning && <span className="policy-transition-note"><CircleAlert size={15} />请等待切换完成</span>}
       </div>

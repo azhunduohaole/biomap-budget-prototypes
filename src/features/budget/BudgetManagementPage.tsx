@@ -1,5 +1,5 @@
 import { AlertTriangle, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '../../components/ui/Button'
 import { initialLedger, initialMembers, initialPool } from '../../data/mockData'
@@ -12,13 +12,14 @@ import type {
   MemberBudget,
 } from '../../types/budget'
 import {
-  activateDraftBudgets,
   allocateBudget,
+  completeMemberBudgetActivation,
+  confirmMemberBudgets,
   recoverBudget,
   resetActiveCommitments,
-  upsertDraftBudget,
 } from '../../utils/budget'
 import { BudgetActionDialog, type BudgetActionMode } from './BudgetActionDialog'
+import { MemberBudgetConfigurationDialog } from './MemberBudgetConfigurationDialog'
 import { BudgetFilters, type BudgetFilterValues } from './BudgetFilters'
 import { BudgetLedgerDrawer } from './BudgetLedgerDrawer'
 import { BudgetPolicyControl } from './BudgetPolicyControl'
@@ -121,7 +122,7 @@ export function BudgetManagementPage({
   const [pool, setPool] = useState<BudgetPool>(initialState.pool)
   const [members, setMembers] = useState<MemberBudget[]>(initialState.members)
   const [ledger, setLedger] = useState<BudgetLedgerEntry[]>(initialLedger)
-  const [drafts, setDrafts] = useState<DraftBudgetEntry[]>([])
+  const [drafts] = useState<DraftBudgetEntry[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [draftFilters, setDraftFilters] = useState<BudgetFilterValues>(emptyFilters)
   const [appliedFilters, setAppliedFilters] = useState<BudgetFilterValues>(emptyFilters)
@@ -130,6 +131,22 @@ export function BudgetManagementPage({
   const [policyDialogOpen, setPolicyDialogOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<'members' | 'ledger'>('members')
+  const [configMemberId, setConfigMemberId] = useState<string | null>(null)
+  const membersRef = useRef(members)
+  const poolRef = useRef(pool)
+  const activationTimersRef = useRef<number[]>([])
+
+  useEffect(() => {
+    membersRef.current = members
+  }, [members])
+
+  useEffect(() => {
+    poolRef.current = pool
+  }, [pool])
+
+  useEffect(() => () => {
+    activationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId))
+  }, [])
 
   const filteredMembers = useMemo(() => members.filter((member) => {
     if (appliedFilters.email && !member.email.toLowerCase().includes(appliedFilters.email.toLowerCase())) return false
@@ -149,31 +166,10 @@ export function BudgetManagementPage({
     ? action.memberIds.map((id) => members.find((member) => member.id === id)).filter((member): member is MemberBudget => Boolean(member))
     : []
   const ledgerMember = members.find((member) => member.id === ledgerMemberId) ?? null
-  const draftTotals = drafts.reduce((totals, draft) => ({ ...totals, [draft.currency]: totals[draft.currency] + draft.amount }), { credits: 0, cro: 0 })
-  const actionPool = {
-    ...pool,
-    credits: { ...pool.credits, unallocated: Math.max(0, pool.credits.unallocated - draftTotals.credits) },
-    cro: { ...pool.cro, unallocated: Math.max(0, pool.cro.unallocated - draftTotals.cro) },
-  }
-
   const setPolicyStatus = (status: BudgetPolicyStatus) => setPool((current) => ({ ...current, policyStatus: status }))
 
   const confirmAction = (amount: number, note: string, currency: Currency) => {
     if (!action) return '额度操作已失效，请重新打开'
-
-    if (pool.policyStatus === 'CONFIGURING' && action.mode === 'allocate') {
-      const total = amount * actionTargets.length
-      if (total > actionPool[currency].unallocated) return '首轮分配总额不能超过当前可分配额度'
-      setDrafts((current) => actionTargets.reduce((next, target) => upsertDraftBudget(next, {
-        memberId: target.id,
-        currency,
-        amount,
-        note,
-      }), current))
-      setToast('配置草稿已保存，确认启用前不会影响正式账务')
-      setAction(null)
-      return null
-    }
 
     if (pool.policyStatus !== 'ENABLED') return '当前状态不允许修改正式个人预算'
     if (action.mode === 'allocate' && pool[currency].status === 'INCONSISTENT') {
@@ -197,28 +193,45 @@ export function BudgetManagementPage({
     }
   }
 
-  const confirmEnable = () => {
+  const confirmMemberConfiguration = (credits: number, cro: number, note: string) => {
+    if (!configMemberId) return '成员配置已失效，请重新打开'
     try {
-      const result = activateDraftBudgets(members, pool, drafts)
-      const entries = drafts.flatMap((draft) => {
-        const target = members.find((member) => member.id === draft.memberId)
-        return target ? createLedgerEntries('allocate', [target], result.members, draft.currency, draft.amount, draft.note, pool, result.pool) : []
-      })
-      setPolicyStatus('ENABLING')
-      window.setTimeout(() => {
-        setMembers(result.members)
-        setPool({ ...result.pool, policyStatus: 'ENABLED' })
+      const currentMembers = membersRef.current
+      const currentPool = poolRef.current
+      const result = confirmMemberBudgets(currentMembers, currentPool, [{ memberId: configMemberId, credits, cro, note }])
+      const target = currentMembers.find((member) => member.id === configMemberId)
+      if (!target) return '成员配置已失效，请重新打开'
+      membersRef.current = result.members
+      poolRef.current = result.pool
+      setMembers(result.members)
+      setPool(result.pool)
+      setConfigMemberId(null)
+      setToast(`${target.name} 已进入启用中，其他成员不受影响`)
+      const timerId = window.setTimeout(() => {
+        const latestMembers = membersRef.current
+        const latestPool = poolRef.current
+        const latestTarget = latestMembers.find((member) => member.id === configMemberId) ?? target
+        const completed = completeMemberBudgetActivation(latestMembers, latestPool, configMemberId, true)
+        const updated = completed.members.find((member) => member.id === configMemberId)
+        const entries = [
+          ...(credits > 0 ? createLedgerEntries('allocate', [latestTarget], completed.members, 'credits', credits, note, latestPool, completed.pool) : []),
+          ...(cro > 0 ? createLedgerEntries('allocate', [latestTarget], completed.members, 'cro', cro, note, latestPool, completed.pool) : []),
+        ]
+        membersRef.current = completed.members
+        poolRef.current = completed.pool
+        setMembers(completed.members)
+        setPool(completed.pool)
         setLedger((current) => [...entries, ...current])
-        setDrafts([])
-        setToast('个人预算已启用')
+        setToast(updated?.budgetStatus === 'ENABLED' ? `${latestTarget.name} 的个人预算已生效` : `${latestTarget.name} 的个人预算启用失败`)
       }, 320)
+      activationTimersRef.current.push(timerId)
+      return null
     } catch (error) {
-      setToast(error instanceof Error ? error.message : '确认启用失败')
+      return error instanceof Error ? error.message : '成员预算确认失败'
     }
   }
 
   const cancelConfiguration = () => {
-    setDrafts([])
     setSelectedIds([])
     setPolicyStatus('DISABLED')
     setToast('配置草稿已取消，正式账务未发生变化')
@@ -228,9 +241,11 @@ export function BudgetManagementPage({
     setPolicyDialogOpen(false)
     setPolicyStatus('DISABLING')
     window.setTimeout(() => {
-      const reset = resetActiveCommitments(members, pool)
+      const reset = resetActiveCommitments(membersRef.current, poolRef.current)
+      membersRef.current = reset.members
+      poolRef.current = { ...reset.pool, policyStatus: 'DISABLED' }
       setMembers(reset.members)
-      setPool({ ...reset.pool, policyStatus: 'DISABLED' })
+      setPool(poolRef.current)
       setToast('个人预算已关闭，成员未使用额度已回收')
     }, 320)
   }
@@ -260,7 +275,7 @@ export function BudgetManagementPage({
 
           {activeView === 'members' ? (
             <>
-              <BudgetPolicyControl status={pool.policyStatus} drafts={drafts} onStart={() => setPolicyStatus('CONFIGURING')} onCancel={cancelConfiguration} onEnable={confirmEnable} onDisable={() => setPolicyDialogOpen(true)} />
+              <BudgetPolicyControl status={pool.policyStatus} drafts={drafts} members={members} onStart={() => setPolicyStatus('CONFIGURING')} onCancel={cancelConfiguration} onDisable={() => setPolicyDialogOpen(true)} />
               <BudgetSummary pool={pool} />
               <BudgetFilters
                 values={draftFilters}
@@ -283,7 +298,7 @@ export function BudgetManagementPage({
                 drafts={drafts}
                 selectedIds={selectedIds}
                 onSelectionChange={setSelectedIds}
-                onAllocate={(memberId) => setAction({ mode: 'allocate', memberIds: [memberId] })}
+                onAllocate={(memberId) => pool.policyStatus === 'CONFIGURING' ? setConfigMemberId(memberId) : setAction({ mode: 'allocate', memberIds: [memberId] })}
                 onRecover={(memberId) => setAction({ mode: 'recover', memberIds: [memberId] })}
                 onLedger={setLedgerMemberId}
                 onBatchAllocate={() => setAction({ mode: 'allocate', memberIds: selectedIds })}
@@ -293,7 +308,8 @@ export function BudgetManagementPage({
         </>
       )}
 
-      {action && actionTargets.length > 0 && <BudgetActionDialog mode={action.mode} targets={actionTargets} pool={actionPool} draftMode={pool.policyStatus === 'CONFIGURING'} onClose={() => setAction(null)} onConfirm={confirmAction} />}
+      {action && actionTargets.length > 0 && <BudgetActionDialog mode={action.mode} targets={actionTargets} pool={pool} onClose={() => setAction(null)} onConfirm={confirmAction} />}
+      {configMemberId && members.find((member) => member.id === configMemberId) && <MemberBudgetConfigurationDialog member={members.find((member) => member.id === configMemberId)!} pool={pool} onClose={() => setConfigMemberId(null)} onConfirm={confirmMemberConfiguration} />}
       {ledgerMember && <BudgetLedgerDrawer member={ledgerMember} entries={ledger.filter((entry) => entry.memberId === ledgerMember.id)} onClose={() => setLedgerMemberId(null)} />}
 
       {policyDialogOpen && (

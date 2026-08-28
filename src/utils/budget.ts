@@ -3,6 +3,7 @@ import type {
   Currency,
   DraftBudgetEntry,
   ExecutableBudget,
+  MemberBudgetDraft,
   MemberBudget,
 } from '../types/budget'
 
@@ -21,6 +22,145 @@ interface RecoveryInput {
 interface BudgetMutationResult {
   members: MemberBudget[]
   pool: BudgetPool
+}
+
+interface MemberBudgetConfirmation {
+  memberId: string
+  credits: number
+  cro: number
+  note: string
+}
+
+function requireNonNegativeAmount(amount: number) {
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error('额度必须为 0 或更大')
+  }
+}
+
+function activeMembersAreEnabled(members: MemberBudget[]) {
+  return members.filter((item) => item.status === 'active').every((item) => item.budgetStatus === 'ENABLED')
+}
+
+export function confirmMemberBudgets(
+  members: MemberBudget[],
+  pool: BudgetPool,
+  confirmations: MemberBudgetConfirmation[],
+): BudgetMutationResult {
+  if (pool.policyStatus !== 'CONFIGURING') {
+    throw new Error('只有配置中的租户策略可以确认成员预算')
+  }
+  const uniqueIds = new Set(confirmations.map((item) => item.memberId))
+  if (uniqueIds.size !== confirmations.length) {
+    throw new Error('同一成员不能重复提交预算')
+  }
+  const targets = confirmations.map((input) => members.find((item) => item.id === input.memberId))
+  if (targets.some((item) => !item || item.status !== 'active')) {
+    throw new Error('只能给正常租户成员配置预算')
+  }
+  if (targets.some((item) => item && (item.budgetStatus === 'ENABLING' || item.budgetStatus === 'ENABLED'))) {
+    throw new Error('该成员预算正在生效或已经生效')
+  }
+  for (const input of confirmations) {
+    requireNonNegativeAmount(input.credits)
+    requireNonNegativeAmount(input.cro)
+  }
+  const totals = confirmations.reduce((result, input) => ({
+    credits: result.credits + input.credits,
+    cro: result.cro + input.cro,
+  }), { credits: 0, cro: 0 })
+  for (const currency of ['credits', 'cro'] as const) {
+    if (totals[currency] > pool[currency].unallocated) {
+      throw new Error(`${currency === 'credits' ? 'Credits' : 'CRO币'}待生效额度超过租户未分配额度`)
+    }
+    if (totals[currency] > 0 && pool[currency].status === 'INCONSISTENT') {
+      throw new Error(`${currency === 'credits' ? 'Credits' : 'CRO币'}预算池异常，修复前不能确认成员预算`)
+    }
+  }
+
+  const byId = new Map(confirmations.map((item) => [item.memberId, item]))
+  const nextMembers = members.map((member) => {
+    const input = byId.get(member.id)
+    if (!input) return member
+    const activationDraft: MemberBudgetDraft = {
+      credits: input.credits,
+      cro: input.cro,
+      note: input.note,
+    }
+    return { ...member, budgetStatus: 'ENABLING' as const, activationDraft }
+  })
+
+  return {
+    members: nextMembers,
+    pool: {
+      ...pool,
+      credits: {
+        ...pool.credits,
+        pendingAllocated: pool.credits.pendingAllocated + totals.credits,
+        unallocated: pool.credits.unallocated - totals.credits,
+      },
+      cro: {
+        ...pool.cro,
+        pendingAllocated: pool.cro.pendingAllocated + totals.cro,
+        unallocated: pool.cro.unallocated - totals.cro,
+      },
+    },
+  }
+}
+
+export function completeMemberBudgetActivation(
+  members: MemberBudget[],
+  pool: BudgetPool,
+  memberId: string,
+  succeeded: boolean,
+): BudgetMutationResult {
+  const target = members.find((item) => item.id === memberId)
+  if (!target || !target.activationDraft || target.budgetStatus !== 'ENABLING') {
+    throw new Error('该成员没有待生效预算')
+  }
+  const draft = target.activationDraft
+  const nextMembers = members.map((member) => {
+    if (member.id !== memberId) return member
+    if (!succeeded) return { ...member, budgetStatus: 'ENABLE_FAILED' as const }
+    return {
+      ...member,
+      budgetStatus: 'ENABLED' as const,
+      activationDraft: null,
+      credits: {
+        ...member.credits,
+        allocated: member.credits.allocated + draft.credits,
+        available: member.credits.available + draft.credits,
+        alertBaseline: member.credits.available + member.credits.reserved + draft.credits,
+      },
+      cro: {
+        ...member.cro,
+        allocated: member.cro.allocated + draft.cro,
+        available: member.cro.available + draft.cro,
+        alertBaseline: member.cro.available + member.cro.reserved + draft.cro,
+      },
+    }
+  })
+  const nextPool = {
+    ...pool,
+    credits: {
+      ...pool.credits,
+      pendingAllocated: pool.credits.pendingAllocated - draft.credits,
+      allocatedAvailable: pool.credits.allocatedAvailable + (succeeded ? draft.credits : 0),
+      unallocated: pool.credits.unallocated + (succeeded ? 0 : draft.credits),
+    },
+    cro: {
+      ...pool.cro,
+      pendingAllocated: pool.cro.pendingAllocated - draft.cro,
+      allocatedAvailable: pool.cro.allocatedAvailable + (succeeded ? draft.cro : 0),
+      unallocated: pool.cro.unallocated + (succeeded ? 0 : draft.cro),
+    },
+  }
+  return {
+    members: nextMembers,
+    pool: {
+      ...nextPool,
+      policyStatus: succeeded && activeMembersAreEnabled(nextMembers) ? 'ENABLED' : nextPool.policyStatus,
+    },
+  }
 }
 
 export function upsertDraftBudget(
@@ -70,6 +210,8 @@ export function resetActiveCommitments(
 ): BudgetMutationResult {
   const nextMembers = members.map((item) => ({
     ...item,
+    budgetStatus: item.status === 'active' ? 'UNCONFIGURED' as const : item.budgetStatus,
+    activationDraft: null,
     credits: { ...item.credits, available: 0, reserved: 0, alertBaseline: 0 },
     cro: { ...item.cro, available: 0, reserved: 0, alertBaseline: 0 },
   }))
@@ -82,6 +224,7 @@ export function resetActiveCommitments(
         ...pool.credits,
         status: 'NORMAL',
         allocatedAvailable: 0,
+        pendingAllocated: 0,
         reserved: 0,
         unallocated: Math.max(0, pool.credits.ledgerBalance),
         spendable: Math.max(0, pool.credits.ledgerBalance),
@@ -90,6 +233,7 @@ export function resetActiveCommitments(
         ...pool.cro,
         status: 'NORMAL',
         allocatedAvailable: 0,
+        pendingAllocated: 0,
         reserved: 0,
         unallocated: Math.max(0, pool.cro.ledgerBalance),
         spendable: Math.max(0, pool.cro.ledgerBalance),

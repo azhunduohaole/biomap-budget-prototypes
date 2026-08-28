@@ -5,6 +5,8 @@ export type { BudgetPolicyStatus }
 
 export type PersonalBudgetStatus = '正常' | '即将耗尽' | '已全部预占' | '已耗尽' | '未分配'
 
+export type PersonalMemberBudgetStatus = 'UNCONFIGURED' | 'ENABLING' | 'ENABLED' | 'ENABLE_FAILED'
+
 export type PersonalBudgetBlockReason =
   | 'PERSONAL_BUDGET_INSUFFICIENT'
   | 'TENANT_PAYMENT_CAPACITY_INSUFFICIENT'

@@ -1,7 +1,7 @@
 import { List, RotateCcw, WalletCards } from 'lucide-react'
 
 import { Button } from '../../components/ui/Button'
-import type { BudgetPolicyStatus, BudgetPool, Currency, DraftBudgetEntry, MemberBudget } from '../../types/budget'
+import type { BudgetPolicyStatus, BudgetPool, Currency, DraftBudgetEntry, MemberBudget, MemberBudgetStatus } from '../../types/budget'
 import { deriveExecutableBudget } from '../../utils/budget'
 import { BlockReason, BudgetStatus, currencyLabels, formatAmount } from './BudgetStatus'
 
@@ -22,6 +22,7 @@ function CurrencyCell({ member, pool, currency, draftAmount, policyStatus }: { m
   const budget = member[currency]
   const executable = deriveExecutableBudget(member, pool, currency)
   const policyActive = policyStatus === 'ENABLED' || policyStatus === 'DISABLING'
+  const memberActive = member.budgetStatus === 'ENABLED' || member.budgetStatus === 'ENABLING'
 
   return (
     <div className="currency-budget-cell">
@@ -31,11 +32,11 @@ function CurrencyCell({ member, pool, currency, draftAmount, policyStatus }: { m
       </div>
       {draftAmount > 0 && <span className="draft-budget-amount">草稿 {formatAmount(draftAmount)}</span>}
       <span>个人可用 {formatAmount(budget.available)}</span>
-      <span className="executable-amount">当前可执行 {policyActive ? formatAmount(executable.accountExecutable) : '--'}</span>
+      <span className="executable-amount">当前可执行 {policyActive && memberActive ? formatAmount(executable.accountExecutable) : '--'}</span>
       <span>预占 {formatAmount(budget.reserved)} · 累计消费 {formatAmount(budget.consumed)}</span>
       {member.status === 'disabled'
         ? <span className="block-reason block-reason-active">账号已禁用</span>
-        : policyActive
+        : policyActive && memberActive
           ? <BlockReason reason={executable.reason} />
           : <span className="block-reason block-reason-neutral">正式额度未生效</span>}
       <details className="budget-breakdown">
@@ -66,6 +67,13 @@ export function MemberBudgetTable({
   const selectedVisibleCount = selectableIds.filter((id) => selectedIds.includes(id)).length
   const allSelected = selectableIds.length > 0 && selectedVisibleCount === selectableIds.length
   const canAllocate = policyStatus === 'CONFIGURING' || policyStatus === 'ENABLED'
+
+  const budgetStatusLabel: Record<MemberBudgetStatus, string> = {
+    UNCONFIGURED: '待配置',
+    ENABLING: '启用中',
+    ENABLED: '已启用',
+    ENABLE_FAILED: '启用失败',
+  }
 
   const toggleAll = () => {
     if (allSelected) {
@@ -114,6 +122,7 @@ export function MemberBudgetTable({
               </th>
               <th>成员</th>
               <th>角色</th>
+              <th>预算生效状态</th>
               <th>Credits</th>
               <th>CRO币</th>
               <th>使用情况</th>
@@ -142,6 +151,7 @@ export function MemberBudgetTable({
                   </div>
                 </td>
                 <td data-label="角色"><span className="role-tag">{member.role}</span></td>
+                <td data-label="预算生效状态"><span className={`member-budget-status member-budget-status-${member.budgetStatus.toLowerCase()}`}>{budgetStatusLabel[member.budgetStatus]}</span></td>
                 <td data-label="Credits"><CurrencyCell member={member} pool={pool} currency="credits" policyStatus={policyStatus} draftAmount={drafts.find((item) => item.memberId === member.id && item.currency === 'credits')?.amount ?? 0} /></td>
                 <td data-label="CRO币"><CurrencyCell member={member} pool={pool} currency="cro" policyStatus={policyStatus} draftAmount={drafts.find((item) => item.memberId === member.id && item.currency === 'cro')?.amount ?? 0} /></td>
                 <td data-label="使用情况">
@@ -155,15 +165,15 @@ export function MemberBudgetTable({
                     <Button
                       variant="link"
                       icon={<WalletCards size={14} aria-hidden="true" />}
-                      aria-label={`给${member.name}${policyStatus === 'CONFIGURING' ? '配置' : '分配'}额度`}
-                      disabled={member.status !== 'active' || !canAllocate || (pool.credits.status === 'INCONSISTENT' && pool.cro.status === 'INCONSISTENT')}
+                      aria-label={policyStatus === 'CONFIGURING' ? `${member.budgetStatus === 'ENABLE_FAILED' ? '重试' : '给'}${member.name}配置预算` : `给${member.name}分配额度`}
+                      disabled={member.status !== 'active' || !canAllocate || (policyStatus === 'CONFIGURING' && (member.budgetStatus === 'ENABLING' || member.budgetStatus === 'ENABLED')) || (policyStatus === 'ENABLED' && (pool.credits.status === 'INCONSISTENT' && pool.cro.status === 'INCONSISTENT'))}
                       onClick={() => onAllocate(member.id)}
-                    >{policyStatus === 'CONFIGURING' ? '配置' : '分配'}</Button>
+                    >{policyStatus === 'CONFIGURING' ? member.budgetStatus === 'ENABLE_FAILED' ? '重试' : member.budgetStatus === 'ENABLING' ? '启用中' : member.budgetStatus === 'ENABLED' ? '已启用' : '配置' : '分配'}</Button>
                     <Button
                       variant="link"
                       icon={<RotateCcw size={14} aria-hidden="true" />}
                       aria-label={`回收${member.name}额度`}
-                      disabled={member.status !== 'active' || policyStatus !== 'ENABLED'}
+                      disabled={member.status !== 'active' || policyStatus !== 'ENABLED' || member.budgetStatus !== 'ENABLED'}
                       onClick={() => onRecover(member.id)}
                     >回收</Button>
                     <Button
@@ -178,7 +188,7 @@ export function MemberBudgetTable({
             ))}
             {members.length === 0 && (
               <tr>
-                <td colSpan={7} className="empty-table-state">没有符合筛选条件的成员</td>
+                <td colSpan={8} className="empty-table-state">没有符合筛选条件的成员</td>
               </tr>
             )}
           </tbody>

@@ -49,6 +49,39 @@ describe('PersonalExpensePage', () => {
     expect(screen.queryByText('个人可用额度')).not.toBeInTheDocument()
   })
 
+  it('blocks only the current member while their personal budget is enabling', () => {
+    render(<PersonalExpensePage policyStatus="CONFIGURING" memberBudgetStatus="ENABLING" />)
+
+    expect(screen.getByText('您的个人预算正在生效，付费任务暂不可用。')).toBeInTheDocument()
+    expect(screen.getByText(/仅影响当前账号，其他租户成员不受影响/)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '我的额度' })).not.toBeInTheDocument()
+  })
+
+  it('shows an explicit zero personal budget after member activation', () => {
+    window.history.replaceState({}, '', '/deduction-records?memberBudgetStatus=enabled&memberBudgetZero=true')
+    render(<PersonalExpensePage policyStatus="ENABLED" memberBudgetStatus="ENABLED" />)
+
+    const creditsOverview = screen.getByRole('region', { name: 'Credits个人额度' })
+    expect(within(creditsOverview).getAllByText('0')).toHaveLength(2)
+    expect(within(creditsOverview).getByText('个人额度不足')).toBeInTheDocument()
+    expect(within(creditsOverview).getByText('当前可执行额度（参考）')).toBeInTheDocument()
+  })
+
+  it('keeps an already-enabled member visible while other members are configuring', () => {
+    render(<PersonalExpensePage policyStatus="CONFIGURING" memberBudgetStatus="ENABLED" />)
+
+    expect(screen.getByRole('heading', { name: '我的额度' })).toBeInTheDocument()
+    expect(screen.queryByText('当前租户未启用个人预算，计费任务按租户原有规则执行。')).not.toBeInTheDocument()
+  })
+
+  it('explains a failed member activation without exposing a zero balance', () => {
+    render(<PersonalExpensePage policyStatus="CONFIGURING" memberBudgetStatus="ENABLE_FAILED" />)
+
+    expect(screen.getByText('个人预算启用失败，付费任务暂不可用。')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '我的额度' })).not.toBeInTheDocument()
+    expect(screen.queryByText('个人可用额度')).not.toBeInTheDocument()
+  })
+
   it('does not expose refund as a V1 record type', () => {
     render(<PersonalExpensePage />)
 

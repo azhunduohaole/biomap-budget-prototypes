@@ -11,6 +11,14 @@ export type BudgetPolicyStatus =
 
 export type MemberStatus = 'active' | 'disabled'
 
+export type MemberBudgetStatus = 'UNCONFIGURED' | 'ENABLING' | 'ENABLED' | 'ENABLE_FAILED'
+
+export interface MemberBudgetDraft {
+  credits: number
+  cro: number
+  note: string
+}
+
 export type BudgetBlockReason =
   | 'PERSONAL_BUDGET_INSUFFICIENT'
   | 'TENANT_PAYMENT_CAPACITY_INSUFFICIENT'
@@ -30,6 +38,7 @@ export interface PoolCurrencyBudget {
   ledgerBalance: number
   reserved: number
   allocatedAvailable: number
+  pendingAllocated: number
   unallocated: number
   spendable: number
   eligibleSpendable: number
@@ -55,6 +64,8 @@ export interface MemberBudget {
   name: string
   role: string
   status: MemberStatus
+  budgetStatus: MemberBudgetStatus
+  activationDraft: MemberBudgetDraft | null
   lastSpentAt: string | null
   credits: CurrencyBudget
   cro: CurrencyBudget
