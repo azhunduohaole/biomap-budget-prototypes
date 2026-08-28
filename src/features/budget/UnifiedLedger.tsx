@@ -46,6 +46,23 @@ function valueOrDash(value?: number | string) {
   return typeof value === 'number' ? formatAmount(value) : value
 }
 
+function getBusinessMeta(entry: BudgetLedgerEntry) {
+  const taskMeta = [entry.productLine, entry.taskType].filter(Boolean).join(' · ')
+  return taskMeta || entry.taskId || '--'
+}
+
+function getAmountBreakdown(entry: BudgetLedgerEntry) {
+  if (entry.regularAmount === undefined && entry.giftAmount === undefined) return null
+  return `赠 ${formatAmount(entry.giftAmount ?? 0)} / 普 ${formatAmount(entry.regularAmount ?? 0)} ${currencyLabels[entry.currency]}`
+}
+
+function getLedgerStatusLabel(entry: BudgetLedgerEntry) {
+  if (entry.recordCategory === 'TASK_BILLING' && entry.operation === 'SETTLEMENT' && entry.status === 'SUCCESS') {
+    return '已结算'
+  }
+  return ledgerStatusLabels[entry.status]
+}
+
 function LedgerDetailDrawer({ entry, onClose }: { entry: BudgetLedgerEntry; onClose: () => void }) {
   const details = [
     ['记录分类', categoryLabels[entry.recordCategory]],
@@ -154,10 +171,13 @@ export function UnifiedLedger({ entries, pool, memberId }: { entries: BudgetLedg
               <td><span>{entry.timestamp}</span><small>{entry.id}</small></td>
               <td><strong>{entry.memberName}</strong><small>{entry.memberEmail}</small></td>
               <td><span>{categoryLabels[entry.recordCategory]}</span><small>{entry.billingScope ? billingScopeLabels[entry.billingScope] : '--'}</small></td>
-              <td><strong>{entry.taskName ?? entry.note}</strong><small>{entry.productLine ?? entry.taskId ?? '--'}</small></td>
+              <td><strong>{entry.taskName ?? entry.note}</strong><small>{getBusinessMeta(entry)}</small></td>
               <td><span>{currencyLabels[entry.currency]}</span><small>{operationLabels[entry.operation]}</small></td>
-              <td className={entry.amount >= 0 ? 'amount-positive' : 'amount-negative'}>{entry.amount > 0 ? '+' : ''}{formatAmount(entry.amount)}</td>
-              <td><span className={`ledger-status is-${entry.status.toLowerCase()}`}>{ledgerStatusLabels[entry.status]}</span></td>
+              <td className={entry.amount >= 0 ? 'amount-positive' : 'amount-negative'}>
+                <span>{entry.amount > 0 ? '+' : ''}{formatAmount(entry.amount)}</span>
+                {getAmountBreakdown(entry) && <small>{getAmountBreakdown(entry)}</small>}
+              </td>
+              <td><span className={`ledger-status is-${entry.status.toLowerCase()}`}>{getLedgerStatusLabel(entry)}</span></td>
               <td><Button variant="link" aria-label={`查看${entry.taskName ?? entry.note}详情`} onClick={() => setSelected(entry)}>详情</Button></td>
             </tr>
           ))}</tbody>

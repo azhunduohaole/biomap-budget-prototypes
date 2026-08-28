@@ -88,6 +88,12 @@ describe('BudgetManagementPage', () => {
     expect(screen.getByRole('button', { name: '导出流水' })).toBeInTheDocument()
     expect(screen.getByLabelText('当前预占 Credits 1,200 CRO币 0')).toBeInTheDocument()
 
+    const settlementRow = screen.getByRole('row', { name: /抗体亲和力预测/ })
+    expect(within(settlementRow).getByText('蛋白设计 · 抗体设计')).toBeInTheDocument()
+    expect(within(settlementRow).getByText('赠 200 / 普 400 Credits')).toBeInTheDocument()
+    expect(within(settlementRow).getByText('已结算')).toBeInTheDocument()
+    expect(within(screen.getByRole('row', { name: /抗体项目首轮预算/ })).getByText('已完成')).toBeInTheDocument()
+
     await user.selectOptions(screen.getByRole('combobox', { name: '计费范围' }), 'TENANT_ONLY')
     expect(screen.getByLabelText('本月 Credits 扣减 2,400')).toBeInTheDocument()
     expect(screen.queryByText('抗体亲和力预测')).not.toBeInTheDocument()
